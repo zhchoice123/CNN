@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>深度学习与视觉 · 双语学习站</title>
+  <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="assets/vendor/hljs/github.min.css" id="hljs-light">
+  <link rel="stylesheet" href="assets/vendor/hljs/github-dark.min.css" id="hljs-dark" disabled>
+  <link rel="stylesheet" href="assets/css/style.css?v=20261010a">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="目录">☰</button>
+    <a class="brand" href="#/">
+      <span class="brand-mark">∇</span>
+      <span class="brand-text">深度学习与视觉<small>Bilingual Study Lab</small></span>
+    </a>
+    <div class="search">
+      <input id="searchInput" type="search" placeholder="搜索章节、术语 Search…" autocomplete="off">
+    </div>
+    <nav class="top-links">
+      <a href="#/start" class="pill">🧭 新手入门</a>
+      <a href="#/practice" class="pill">✍️ 练习</a>
+      <a href="#/code" class="pill">🔎 代码库</a>
+      <a href="#/lab" class="pill">🧪 实验室</a>
+      <a href="#/review" class="pill">闪卡复习 <span id="dueBadge" class="badge"></span></a>
+      <a href="#/mistakes" class="pill">错题本</a>
+      <a href="#/tools" class="pill" title="工具箱：番茄钟、Anki 导出、备份">🧰</a>
+    </nav>
+    <button class="icon-btn" id="themeBtn" aria-label="切换主题">◐</button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main" tabindex="-1">
+      <div class="loading">加载中…</div>
+    </main>
+  </div>
+  <div class="scrim" id="scrim"></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="assets/vendor/katex/katex.min.js"></script>
+  <script src="assets/vendor/katex/auto-render.min.js"></script>
+  <script src="assets/vendor/hljs/highlight.min.js"></script>
+  <script src="assets/js/course-data.js?v=20261009"></script>
+  <script src="assets/js/resources.js?v=20261009"></script>
+  <script src="assets/js/app.js?v=20261010d"></script>
+</body>
+</html>
