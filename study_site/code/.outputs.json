@@ -1,0 +1,513 @@
+{
+ "ch08_bottleneck.py": {
+  "hash": "2cef4ccaa4283cdbdbc2c72619ca796ae2a7d565",
+  "ok": true,
+  "output": "直接 5x5 卷积乘法次数: 120,422,400\n1x1 降维: 2,408,448 + 5x5: 10,035,200 = 12,443,648\n计算量约为原来的 10.3%",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：Inception 中 1x1 卷积“瓶颈层”节省的乘法次数。\"\"\"\nH = W = 28\ncin, cout = 192, 32\n\ndirect = H * W * cout * 5 * 5 * cin                 # 直接 5x5 卷积\nreduce_ = H * W * 16 * 1 * 1 * cin                  # 先 1x1 降到 16 通道\nthen_5 = H * W * cout * 5 * 5 * 16                  # 再 5x5 卷积\nprint(f\"直接 5x5 卷积乘法次数: {direct:,}\")\nprint(f\"1x1 降维: {reduce_:,} + 5x5: {then_5:,} = {reduce_ + then_5:,}\")\nprint(f\"计算量约为原来的 {(reduce_ + then_5) / direct:.1%}\")\n"
+ },
+ "ch08_conv2d.py": {
+  "hash": "cbb7ef61bd09213526365c5c530973592c7cb4bc",
+  "ok": true,
+  "output": "输入形状: (6, 6)  核形状: (3, 3)\n输出形状 (无填充, 步长1): (4, 4)\n[[ 0. 40. 40.  0.]\n [ 0. 40. 40.  0.]\n [ 0. 40. 40.  0.]\n [ 0. 40. 40.  0.]]\nsame 填充后输出形状: (6, 6)\n步长 2 输出形状: (2, 2)\n结论: 只有窗口跨过边缘的位置响应为 40，平坦区域响应为 0",
+  "seconds": 0.05,
+  "source": "\"\"\"手写二维卷积（深度学习框架里的“卷积”其实是互相关），并用边缘检测核验证。\"\"\"\nimport numpy as np\n\n\ndef conv2d(x, k, stride=1, pad=0):\n    \"\"\"x: (H, W) 单通道图像, k: (kh, kw) 卷积核。返回特征图。\"\"\"\n    if pad:\n        x = np.pad(x, pad)\n    kh, kw = k.shape\n    oh = (x.shape[0] - kh) // stride + 1\n    ow = (x.shape[1] - kw) // stride + 1\n    out = np.zeros((oh, ow))\n    for i in range(oh):\n        for j in range(ow):\n            patch = x[i * stride:i * stride + kh, j * stride:j * stride + kw]\n            out[i, j] = np.sum(patch * k)          # 局部窗口与核逐元素相乘再求和\n    return out\n\n\n# 一张 6x6 的“图像”：左半边暗(0)，右半边亮(10) —— 中间有一条竖直边缘\nimg = np.zeros((6, 6))\nimg[:, 3:] = 10\n\nsobel_x = np.array([[-1, 0, 1],\n                    [-2, 0, 2],\n                    [-1, 0, 1]])                    # 对水平方向的亮度变化敏感 -> 检测竖直边缘\n\nfmap = conv2d(img, sobel_x)\nprint(\"输入形状:\", img.shape, \" 核形状:\", sobel_x.shape)\nprint(\"输出形状 (无填充, 步长1):\", fmap.shape)\nprint(fmap)\nprint(\"same 填充后输出形状:\", conv2d(img, sobel_x, pad=1).shape)\nprint(\"步长 2 输出形状:\", conv2d(img, sobel_x, stride=2).shape)\nprint(\"结论: 只有窗口跨过边缘的位置响应为 40，平坦区域响应为 0\")\n"
+ },
+ "ch08_pooling.py": {
+  "hash": "5d0b6d688ec0ac427eafc4ce85adfa084ed149dc",
+  "ok": true,
+  "output": "特征图:\n [[1. 3. 2. 0.]\n [4. 6. 1. 1.]\n [0. 2. 9. 5.]\n [1. 1. 3. 8.]]\n2x2 最大池化:\n [[6. 2.]\n [2. 9.]]\n原位置池化: [1. 0. 0. 0.]  平移后池化: [1. 0. 0. 0.]\n两者相同: True",
+  "seconds": 0.05,
+  "source": "\"\"\"最大池化：降采样 + 对小平移的鲁棒性。\"\"\"\nimport numpy as np\n\n\ndef max_pool(x, size=2, stride=2):\n    oh = (x.shape[0] - size) // stride + 1\n    ow = (x.shape[1] - size) // stride + 1\n    out = np.zeros((oh, ow))\n    for i in range(oh):\n        for j in range(ow):\n            out[i, j] = x[i*stride:i*stride+size, j*stride:j*stride+size].max()\n    return out\n\n\nfmap = np.array([[1, 3, 2, 0],\n                 [4, 6, 1, 1],\n                 [0, 2, 9, 5],\n                 [1, 1, 3, 8]], dtype=float)\nprint(\"特征图:\\n\", fmap)\nprint(\"2x2 最大池化:\\n\", max_pool(fmap))\n\n# 平移 1 个像素后，池化结果大体保持不变\na = np.zeros((4, 4)); a[0, 0] = 1        # 特征出现在 (0,0)\nb = np.zeros((4, 4)); b[1, 1] = 1        # 同一特征平移到 (1,1)\nprint(\"原位置池化:\", max_pool(a).ravel(), \" 平移后池化:\", max_pool(b).ravel())\nprint(\"两者相同:\", np.array_equal(max_pool(a), max_pool(b)))\n"
+ },
+ "ch08_receptive.py": {
+  "hash": "9ce239b0ce4d52a117c070435462ba3b1afdee31",
+  "ok": true,
+  "output": "三个 3x3 卷积(步长1):\nconv3x3      k=3 s=1  感受野 3x3  累计步长 1\nconv3x3      k=3 s=1  感受野 5x5  累计步长 1\nconv3x3      k=3 s=1  感受野 7x7  累计步长 1\n\nconv3x3 -> pool2x2 -> conv3x3 -> pool2x2 -> conv3x3:\nconv3x3      k=3 s=1  感受野 3x3  累计步长 1\nmaxpool2x2   k=2 s=2  感受野 4x4  累计步长 2\nconv3x3      k=3 s=1  感受野 8x8  累计步长 2\nmaxpool2x2   k=2 s=2  感受野 10x10  累计步长 4\nconv3x3      k=3 s=1  感受野 18x18  累计步长 4",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：堆叠卷积层的感受野计算。 r_l = r_{l-1} + (k_l - 1) * j_{l-1}，j 为累计步长。\"\"\"\n\n\ndef receptive_field(layers):\n    r, j = 1, 1\n    for name, k, s in layers:\n        r = r + (k - 1) * j\n        j = j * s\n        print(f\"{name:12s} k={k} s={s}  感受野 {r}x{r}  累计步长 {j}\")\n    return r\n\n\nprint(\"三个 3x3 卷积(步长1):\")\nreceptive_field([(\"conv3x3\", 3, 1)] * 3)\nprint(\"\\nconv3x3 -> pool2x2 -> conv3x3 -> pool2x2 -> conv3x3:\")\nreceptive_field([(\"conv3x3\", 3, 1), (\"maxpool2x2\", 2, 2), (\"conv3x3\", 3, 1), (\"maxpool2x2\", 2, 2), (\"conv3x3\", 3, 1)])\n"
+ },
+ "ch08_residual.py": {
+  "hash": "45c04a94585495794af27e52d20dda8425c4fd06",
+  "ok": true,
+  "output": "反传  1 层后  普通网络梯度范数 1.88e-01   残差网络 1.05e+00\n反传 10 层后  普通网络梯度范数 1.06e-07   残差网络 1.26e+00\n反传 25 层后  普通网络梯度范数 1.84e-18   残差网络 1.69e+00\n反传 50 层后  普通网络梯度范数 5.74e-36   残差网络 2.58e+00\n结论: 普通深网络的梯度指数级消失，残差网络依靠恒等映射把梯度直接传回浅层",
+  "seconds": 0.06,
+  "source": "\"\"\"为什么残差连接能训练很深的网络：比较梯度在 50 层中的衰减。\n\n把每一层近似看成线性映射 W（权重较小，模拟难训练的深网络）。\n普通网络的梯度要连乘 W^T；残差网络 y = x + F(x) 的雅可比是 (I + W)，梯度多了一条“恒等高速通道”。\n\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nd, depth = 64, 50\nWs = [rng.normal(0, 0.2 / np.sqrt(d), (d, d)) for _ in range(depth)]\n\ng_plain = np.ones(d) / np.sqrt(d)          # 初始梯度范数为 1\ng_res = np.ones(d) / np.sqrt(d)\nfor l, W in enumerate(reversed(Ws), 1):\n    g_plain = W.T @ g_plain                    # 普通网络: dL/dx = W^T dL/dy\n    g_res = g_res + W.T @ g_res                # 残差网络: dL/dx = (I + W)^T dL/dy\n    if l in (1, 10, 25, 50):\n        print(f\"反传 {l:2d} 层后  普通网络梯度范数 {np.linalg.norm(g_plain):.2e}   残差网络 {np.linalg.norm(g_res):.2e}\")\nprint(\"结论: 普通深网络的梯度指数级消失，残差网络依靠恒等映射把梯度直接传回浅层\")\n"
+ },
+ "ch08_shapes_params.py": {
+  "hash": "6f0e8b58bd79fca19573f59b1ee87c071bd19761",
+  "ok": true,
+  "output": "== LeNet-5 (输入 32x32x1) ==\nC1 conv5x5 x6    -> 28x28x6  参数 156\nS2 pool2x2       -> 14x14x6  参数 0\nC3 conv5x5 x16   -> 10x10x16  参数 2416\nS4 pool2x2       -> 5x5x16  参数 0\n展平 400 -> FC120 参数 48120\n卷积层参数合计: 2572\n\n== VGG 风格：两个 3x3 vs 一个 5x5 (通道 C=64) ==\n两个 3x3 卷积参数: 73856\n一个 5x5 卷积参数: 102464\n感受野相同(5x5)，参数节省 27.9%，且多了一次非线性",
+  "seconds": 0.01,
+  "source": "\"\"\"卷积层输出尺寸与参数量：用公式逐层推算 LeNet-5 与一个 VGG 模块。\"\"\"\n\n\ndef out_size(n, k, s=1, p=0):\n    return (n + 2 * p - k) // s + 1\n\n\ndef conv_params(cin, cout, k):\n    return (k * k * cin + 1) * cout          # 每个输出通道: k*k*cin 个权重 + 1 个偏置\n\n\nprint(\"== LeNet-5 (输入 32x32x1) ==\")\nh, c = 32, 1\nlayers = [(\"C1 conv5x5 x6\", \"conv\", 5, 6), (\"S2 pool2x2\", \"pool\", 2, None),\n          (\"C3 conv5x5 x16\", \"conv\", 5, 16), (\"S4 pool2x2\", \"pool\", 2, None)]\ntotal = 0\nfor name, kind, k, cout in layers:\n    if kind == \"conv\":\n        n = conv_params(c, cout, k)\n        h, c = out_size(h, k), cout\n        total += n\n        print(f\"{name:16s} -> {h}x{h}x{c}  参数 {n}\")\n    else:\n        h = out_size(h, k, s=2)\n        print(f\"{name:16s} -> {h}x{h}x{c}  参数 0\")\nfc = (h * h * c + 1) * 120\nprint(f\"展平 {h*h*c} -> FC120 参数 {fc}\")\nprint(\"卷积层参数合计:\", total)\n\nprint(\"\\n== VGG 风格：两个 3x3 vs 一个 5x5 (通道 C=64) ==\")\nC = 64\ntwo_3x3 = 2 * conv_params(C, C, 3)\none_5x5 = conv_params(C, C, 5)\nprint(\"两个 3x3 卷积参数:\", two_3x3)\nprint(\"一个 5x5 卷积参数:\", one_5x5)\nprint(f\"感受野相同(5x5)，参数节省 {100*(1-two_3x3/one_5x5):.1f}%，且多了一次非线性\")\n"
+ },
+ "ch01_column_picture.py": {
+  "hash": "422401ef46ba5705a2d1d894e8140fa99a68c737",
+  "ok": true,
+  "output": "A @ x            = [3. 6. 3.]\n2*a1 - 1*a2 + 1*a3 = [3. 6. 3.]\n奇异值: [8.4354 0.9183 0.    ]\n秩 r = 2  (第二行是第一行的 2 倍，所以秩不满)\n零空间基向量: [-0.5774 -0.5774  0.5774]\n验证 A @ n ≈ 0: True\n四个子空间维数: 列空间 2, 零空间 1, 行空间 2, 左零空间 1",
+  "seconds": 0.05,
+  "source": "\"\"\"列视角：A @ x 等于 A 的各列按 x 的分量做线性组合；用 SVD 求秩与零空间。\"\"\"\nimport numpy as np\n\nA = np.array([[1., 2., 3.],\n              [2., 4., 6.],\n              [1., 0., 1.]])\nx = np.array([2., -1., 1.])\n\nprint(\"A @ x            =\", A @ x)\nprint(\"2*a1 - 1*a2 + 1*a3 =\", 2 * A[:, 0] - 1 * A[:, 1] + 1 * A[:, 2])\n\nU, s, Vt = np.linalg.svd(A)\nrank = int(np.sum(s > 1e-10))\nprint(\"奇异值:\", np.round(s, 4))\nprint(\"秩 r =\", rank, \" (第二行是第一行的 2 倍，所以秩不满)\")\nnull = Vt[rank:].T                       # 右奇异向量中对应零奇异值的部分张成零空间\nprint(\"零空间基向量:\", np.round(null.ravel(), 4))\nprint(\"验证 A @ n ≈ 0:\", np.allclose(A @ null, 0))\nm, n = A.shape\nprint(f\"四个子空间维数: 列空间 {rank}, 零空间 {n-rank}, 行空间 {rank}, 左零空间 {m-rank}\")\n"
+ },
+ "ch01_ex_eigen.py": {
+  "hash": "5590671125f3f5f6394f9eb9918ad346cfa3f3d2",
+  "ok": true,
+  "output": "特征值: [1. 3.]\n特征向量(列):\n [[-0.7071  0.7071]\n [ 0.7071  0.7071]]\nA^10 =\n [[29525. 29524.]\n [29524. 29525.]]\n公式 (3^10 ± 1)/2 = 29525.0 29524.0",
+  "seconds": 0.05,
+  "source": "\"\"\"例题：A = [[2,1],[1,2]] 的特征值、特征向量与 A^10。\"\"\"\nimport numpy as np\nA = np.array([[2., 1.], [1., 2.]])\nw, Q = np.linalg.eigh(A)\nprint(\"特征值:\", w)\nprint(\"特征向量(列):\\n\", np.round(Q, 4))\nprint(\"A^10 =\\n\", np.linalg.matrix_power(A, 10))\nprint(\"公式 (3^10 ± 1)/2 =\", (3**10 + 1) / 2, (3**10 - 1) / 2)\n"
+ },
+ "ch01_ex_line.py": {
+  "hash": "eb9940b1bc1f0ddbdea419a643591d893fbb0ee4",
+  "ok": true,
+  "output": "A^T A =\n [[3. 3.]\n [3. 5.]] \nA^T b = [6. 0.]\n最佳直线: b = 5 + (-3) t\n误差向量 e = [ 1. -2.  1.]  误差平方和 = 6.0",
+  "seconds": 0.05,
+  "source": "\"\"\"例题：用最小二乘拟合经过 (0,6), (1,0), (2,0) 的最佳直线 b = C + D t。\"\"\"\nimport numpy as np\nt = np.array([0., 1., 2.]); b = np.array([6., 0., 0.])\nA = np.column_stack([np.ones(3), t])\nprint(\"A^T A =\\n\", A.T @ A, \"\\nA^T b =\", A.T @ b)\nC, D = np.linalg.solve(A.T @ A, A.T @ b)\nprint(f\"最佳直线: b = {C:g} + ({D:g}) t\")\ne = b - A @ [C, D]\nprint(\"误差向量 e =\", e, \" 误差平方和 =\", e @ e)\n"
+ },
+ "ch01_least_squares.py": {
+  "hash": "d745a44b3e344f9fdab3f8eef829ef44b3e5f1fa",
+  "ok": true,
+  "output": "正规方程解 [截距, 斜率] = [1.6099 0.7606]\nlstsq 解               = [1.6099 0.7606]\n残差与每一列的内积 (应约为 0): [0. 0.]\n投影矩阵满足 P^2 = P: True  且对称: True",
+  "seconds": 0.06,
+  "source": "\"\"\"最小二乘 = 把 b 投影到 A 的列空间：A^T A x̂ = A^T b，残差与列空间正交。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nt = np.linspace(0, 5, 20)\nb = 1.5 + 0.8 * t + rng.normal(0, 0.3, t.size)      # 带噪声的直线数据\nA = np.column_stack([np.ones_like(t), t])            # 设计矩阵：截距列 + 斜率列\n\nx_normal = np.linalg.solve(A.T @ A, A.T @ b)         # 正规方程\nx_lstsq, *_ = np.linalg.lstsq(A, b, rcond=None)      # 数值稳定的库函数\nprint(\"正规方程解 [截距, 斜率] =\", np.round(x_normal, 4))\nprint(\"lstsq 解               =\", np.round(x_lstsq, 4))\n\np = A @ x_normal                                      # b 在列空间上的投影\ne = b - p                                             # 残差\nprint(\"残差与每一列的内积 (应约为 0):\", np.round(A.T @ e, 10))\nP = A @ np.linalg.inv(A.T @ A) @ A.T                  # 投影矩阵\nprint(\"投影矩阵满足 P^2 = P:\", np.allclose(P @ P, P), \" 且对称:\", np.allclose(P, P.T))\n"
+ },
+ "ch01_svd.py": {
+  "hash": "aba0a3551462bdfb3e946ba21ed54c0175e5dc80",
+  "ok": true,
+  "output": "前 6 个奇异值: [58.82 47.75 44.84  0.69  0.67  0.62]\n秩 1 近似: 保留能量 0.4461, 相对误差 0.7443, 存储量 101 vs 2400\n秩 2 近似: 保留能量 0.7400, 相对误差 0.5099, 存储量 202 vs 2400\n秩 3 近似: 保留能量 0.9993, 相对误差 0.0261, 存储量 303 vs 2400\n秩 5 近似: 保留能量 0.9994, 相对误差 0.0237, 存储量 505 vs 2400",
+  "seconds": 0.06,
+  "source": "\"\"\"奇异值分解与低秩近似：保留前 k 个奇异值就得到误差最小的秩 k 近似（Eckart–Young）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\n# 构造一个“近似低秩”的 60x40 矩阵：3 个主成分 + 少量噪声\nX = rng.normal(size=(60, 3)) @ rng.normal(size=(3, 40)) + 0.05 * rng.normal(size=(60, 40))\nU, s, Vt = np.linalg.svd(X, full_matrices=False)\nprint(\"前 6 个奇异值:\", np.round(s[:6], 2))\nenergy = np.cumsum(s ** 2) / np.sum(s ** 2)\nfor k in (1, 2, 3, 5):\n    Xk = U[:, :k] @ np.diag(s[:k]) @ Vt[:k]\n    err = np.linalg.norm(X - Xk) / np.linalg.norm(X)\n    print(f\"秩 {k} 近似: 保留能量 {energy[k-1]:.4f}, 相对误差 {err:.4f}, 存储量 {k*(60+40+1)} vs {60*40}\")\n"
+ },
+ "ch02_bayes.py": {
+  "hash": "4f1aa337ba53587349e0ca8644e319355829b070",
+  "ok": true,
+  "output": "P(阳性) = 0.0594\nP(患病 | 阳性) = 0.1667  <- 远低于直觉上的 99%\n模拟: 阳性者中真正患病的比例 = 0.1668\n连续两次阳性后患病概率 = 0.7984",
+  "seconds": 0.09,
+  "source": "\"\"\"贝叶斯定理：罕见病检测。患病率 1%，灵敏度 99%，特异度 95%。检测阳性时真正患病的概率是多少？\"\"\"\nimport numpy as np\n\nprior, sens, spec = 0.01, 0.99, 0.95\np_pos = sens * prior + (1 - spec) * (1 - prior)          # 全概率公式\nposterior = sens * prior / p_pos\nprint(f\"P(阳性) = {p_pos:.4f}\")\nprint(f\"P(患病 | 阳性) = {posterior:.4f}  <- 远低于直觉上的 99%\")\n\n# 用 100 万人模拟验证\nrng = np.random.default_rng(42)\nn = 1_000_000\nsick = rng.random(n) < prior\npositive = np.where(sick, rng.random(n) < sens, rng.random(n) < 1 - spec)\nprint(f\"模拟: 阳性者中真正患病的比例 = {sick[positive].mean():.4f}\")\n# 再测一次（把第一次的后验当作新的先验）\np2 = sens * posterior / (sens * posterior + (1 - spec) * (1 - posterior))\nprint(f\"连续两次阳性后患病概率 = {p2:.4f}\")\n"
+ },
+ "ch02_clt.py": {
+  "hash": "c778adf9675d496343f955da520c0bcebe4d72c7",
+  "ok": true,
+  "output": "n=  2: 样本均值的标准差 1.412 (理论 1.414), 偏度 1.370\nn= 10: 样本均值的标准差 0.640 (理论 0.632), 偏度 0.638\nn= 50: 样本均值的标准差 0.282 (理论 0.283), 偏度 0.289\nn=50 时 95% 置信区间的实际覆盖率: 0.931",
+  "seconds": 0.16,
+  "source": "\"\"\"中心极限定理与置信区间：即使总体是偏态的指数分布，样本均值也近似正态。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nmu = 2.0                                     # 指数分布的真实均值\nfor n in (2, 10, 50):\n    means = rng.exponential(mu, size=(20000, n)).mean(axis=1)\n    skew = np.mean(((means - means.mean()) / means.std()) ** 3)\n    print(f\"n={n:3d}: 样本均值的标准差 {means.std():.3f} (理论 {mu/np.sqrt(n):.3f}), 偏度 {skew:.3f}\")\n\n# 95% 置信区间的覆盖率：重复抽样 10000 次，区间包含真值的比例\nn, hits = 50, 0\nfor _ in range(10000):\n    x = rng.exponential(mu, n)\n    half = 1.96 * x.std(ddof=1) / np.sqrt(n)\n    hits += (x.mean() - half <= mu <= x.mean() + half)\nprint(f\"n=50 时 95% 置信区间的实际覆盖率: {hits/10000:.3f}\")\n"
+ },
+ "ch02_entropy.py": {
+  "hash": "c43e5aed0b37173bd9cb03efdf61cd7502c9837d",
+  "ok": true,
+  "output": "公平硬币熵: 1.0 比特\n偏硬币 (0.9, 0.1) 熵: 0.469 比特\n均匀的 8 种结果熵: 3.0 比特\n\nH(p) = 1.1568, 交叉熵 H(p,q) = 1.2796, KL(p||q) = 0.1228\n验证 H(p,q) = H(p) + KL: True\nKL 不对称: KL(p||q)=0.1228, KL(q||p)=0.1328\none-hot 交叉熵 = -log2 q[正确类] = 1.0000",
+  "seconds": 0.05,
+  "source": "\"\"\"熵、交叉熵与 KL 散度（单位：比特）。交叉熵 = 熵 + KL 散度。\"\"\"\nimport numpy as np\n\n\ndef H(p):\n    p = np.asarray(p, float); p = p[p > 0]\n    return -np.sum(p * np.log2(p))\n\n\ndef cross_entropy(p, q):\n    p, q = np.asarray(p, float), np.asarray(q, float)\n    return -np.sum(p[p > 0] * np.log2(q[p > 0]))\n\n\ndef kl(p, q):\n    return cross_entropy(p, q) - H(p)\n\n\nprint(\"公平硬币熵:\", H([0.5, 0.5]), \"比特\")\nprint(\"偏硬币 (0.9, 0.1) 熵:\", round(H([0.9, 0.1]), 4), \"比特\")\nprint(\"均匀的 8 种结果熵:\", H(np.ones(8) / 8), \"比特\")\n\np = np.array([0.7, 0.2, 0.1])                # 真实分布（如真实标签）\nq = np.array([0.5, 0.3, 0.2])                # 模型预测分布\nprint(f\"\\nH(p) = {H(p):.4f}, 交叉熵 H(p,q) = {cross_entropy(p, q):.4f}, KL(p||q) = {kl(p, q):.4f}\")\nprint(\"验证 H(p,q) = H(p) + KL:\", np.isclose(cross_entropy(p, q), H(p) + kl(p, q)))\nprint(f\"KL 不对称: KL(p||q)={kl(p, q):.4f}, KL(q||p)={kl(q, p):.4f}\")\n\n# 分类中的交叉熵损失：真实标签 one-hot，只剩 -log q(正确类)\nonehot = np.array([1, 0, 0])\nprint(f\"one-hot 交叉熵 = -log2 q[正确类] = {cross_entropy(onehot, q):.4f}\")\n"
+ },
+ "ch02_ex_weighing.py": {
+  "hash": "027b3b635079faa6ba407a2dfa14ae8676671cf7",
+  "ok": true,
+  "output": "需要的信息量 log2(24) = 4.585 比特\n每次称重最多获得 log2(3) = 1.585 比特\n最少称重次数 >= 2.893 -> 3 次\n3 次称重最多区分 3^3 = 27 种结果 >= 24",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：12 个球称重问题的信息论下界。\"\"\"\nimport math\noutcomes = 12 * 2                     # 哪个球异常 × 偏重还是偏轻\nneed = math.log2(outcomes)\nper_weigh = math.log2(3)              # 天平三种结果\nprint(f\"需要的信息量 log2(24) = {need:.3f} 比特\")\nprint(f\"每次称重最多获得 log2(3) = {per_weigh:.3f} 比特\")\nprint(f\"最少称重次数 >= {need/per_weigh:.3f} -> {math.ceil(need/per_weigh)} 次\")\nprint(f\"3 次称重最多区分 3^3 = {3**3} 种结果 >= 24\")\n"
+ },
+ "ch02_permutation_test.py": {
+  "hash": "a805e2c75132d106e88e221581f55e7b5beda68b",
+  "ok": true,
+  "output": "观测到的均值差 = 2.019\n双侧 p 值 = 0.0001\n结论: 在 α=0.05 下拒绝零假设\nWelch t 统计量 = 4.482",
+  "seconds": 0.14,
+  "source": "\"\"\"假设检验：两组均值是否有差异？用置换检验计算 p 值（不依赖正态假设）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(7)\na = rng.normal(10.0, 2.0, 30)                # 对照组\nb = rng.normal(11.2, 2.0, 30)                # 实验组，真实均值高 1.2\nobs = b.mean() - a.mean()\n\npooled = np.concatenate([a, b])\ndiffs = np.empty(20000)\nfor i in range(diffs.size):                  # 零假设下组标签可以任意交换\n    perm = rng.permutation(pooled)\n    diffs[i] = perm[30:].mean() - perm[:30].mean()\np = np.mean(np.abs(diffs) >= abs(obs))\nprint(f\"观测到的均值差 = {obs:.3f}\")\nprint(f\"双侧 p 值 = {p:.4f}\")\nprint(\"结论:\", \"在 α=0.05 下拒绝零假设\" if p < 0.05 else \"不能拒绝零假设\")\n\n# Welch t 统计量\nt = obs / np.sqrt(a.var(ddof=1) / 30 + b.var(ddof=1) / 30)\nprint(f\"Welch t 统计量 = {t:.3f}\")\n"
+ },
+ "ch03_bias_variance.py": {
+  "hash": "6201e8dfffd1eb5ab568363e209027caade42d42",
+  "ok": true,
+  "output": "阶数  训练RMSE  测试RMSE\n  0      0.652     0.776\n  1      0.299     0.528\n  3      0.131     0.277\n  6      0.098     3.241\n  9      0.000  2636.637\n低阶: 训练、测试误差都高 (欠拟合/高偏差)；9 阶: 训练误差≈0 但测试误差暴涨 (过拟合/高方差)\n9 阶模型改用 200 个训练点后的测试 RMSE: 0.260",
+  "seconds": 0.06,
+  "source": "\"\"\"偏差-方差权衡：用不同阶数的多项式拟合带噪声的正弦曲线（Bishop 第 1 章的经典例子）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(3)\nf = lambda x: np.sin(2 * np.pi * x)\nx_tr = rng.uniform(0, 1, 10); y_tr = f(x_tr) + rng.normal(0, 0.25, 10)\nx_te = rng.uniform(0, 1, 500); y_te = f(x_te) + rng.normal(0, 0.25, 500)\n\nprint(\"阶数  训练RMSE  测试RMSE\")\nfor deg in (0, 1, 3, 6, 9):\n    coef = np.polyfit(x_tr, y_tr, deg)\n    rmse = lambda x, y: np.sqrt(np.mean((np.polyval(coef, x) - y) ** 2))\n    print(f\"{deg:3d}   {rmse(x_tr, y_tr):8.3f}  {rmse(x_te, y_te):8.3f}\")\nprint(\"低阶: 训练、测试误差都高 (欠拟合/高偏差)；9 阶: 训练误差≈0 但测试误差暴涨 (过拟合/高方差)\")\n\n# 增加数据量可以缓解过拟合\nx_big = rng.uniform(0, 1, 200); y_big = f(x_big) + rng.normal(0, 0.25, 200)\ncoef = np.polyfit(x_big, y_big, 9)\nprint(f\"9 阶模型改用 200 个训练点后的测试 RMSE: {np.sqrt(np.mean((np.polyval(coef, x_te) - y_te) ** 2)):.3f}\")\n"
+ },
+ "ch03_ex_prf.py": {
+  "hash": "917e3db56d4bd2d00585f319c9f84e7cbe123b37",
+  "ok": true,
+  "output": "准确率 0.970  精确率 0.800  召回率 0.667  F1 0.727  特异度 0.989",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：由混淆矩阵计算各项指标。\"\"\"\ntp, fp, fn, tn = 40, 10, 20, 930\nacc = (tp + tn) / (tp + fp + fn + tn)\nprec = tp / (tp + fp); rec = tp / (tp + fn)\nf1 = 2 * prec * rec / (prec + rec)\nspec = tn / (tn + fp)\nprint(f\"准确率 {acc:.3f}  精确率 {prec:.3f}  召回率 {rec:.3f}  F1 {f1:.3f}  特异度 {spec:.3f}\")\n"
+ },
+ "ch03_knn_cv.py": {
+  "hash": "42c0083a0c4ec2aeae63f41fcf10ceac5bb845b2",
+  "ok": true,
+  "output": "  K   训练准确率  5折CV准确率\n   1      1.000      0.820\n   3      0.920      0.847\n   7      0.893      0.863\n  15      0.897      0.850\n  31      0.853      0.810\n 101      0.640      0.527\n交叉验证选出的 K = 7 (CV 准确率 0.863)",
+  "seconds": 0.09,
+  "source": "\"\"\"K 近邻分类 + 5 折交叉验证选择 K。K 太小过拟合，K 太大欠拟合。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nn = 300\nX = rng.normal(size=(n, 2))\ny = ((X[:, 0] ** 2 + X[:, 1] ** 2) < 1.2).astype(int)        # 圆形决策边界\nflip = rng.random(n) < 0.1; y[flip] = 1 - y[flip]             # 10% 标签噪声\n\n\ndef knn_predict(Xtr, ytr, Xq, k):\n    d = ((Xq[:, None, :] - Xtr[None, :, :]) ** 2).sum(-1)\n    idx = np.argsort(d, axis=1)[:, :k]\n    return (ytr[idx].mean(1) > 0.5).astype(int)\n\n\nfolds = np.array_split(rng.permutation(n), 5)\nprint(\"  K   训练准确率  5折CV准确率\")\nbest = None\nfor k in (1, 3, 7, 15, 31, 101):\n    cv = []\n    for i in range(5):\n        te = folds[i]; tr = np.concatenate([folds[j] for j in range(5) if j != i])\n        cv.append((knn_predict(X[tr], y[tr], X[te], k) == y[te]).mean())\n    train_acc = (knn_predict(X, y, X, k) == y).mean()\n    print(f\"{k:4d}   {train_acc:8.3f}   {np.mean(cv):8.3f}\")\n    if best is None or np.mean(cv) > best[1]:\n        best = (k, np.mean(cv))\nprint(f\"交叉验证选出的 K = {best[0]} (CV 准确率 {best[1]:.3f})\")\n"
+ },
+ "ch03_metrics.py": {
+  "hash": "41b7c8d913ab71d334e6b2439a94c9838e915a35",
+  "ok": true,
+  "output": "阈值 -0.50: TP= 89 FP=466 FN=  3 TN=442  准确率=0.531 精确率=0.160 召回率=0.967 F1=0.275\n阈值  0.50: TP= 63 FP=146 FN= 29 TN=762  准确率=0.825 精确率=0.301 召回率=0.685 F1=0.419\n阈值  1.50: TP= 26 FP= 14 FN= 66 TN=894  准确率=0.920 精确率=0.650 召回率=0.283 F1=0.394\n全部预测为负类的“傻瓜模型”准确率: 0.908  <- 准确率悖论\nAUC = 0.866",
+  "seconds": 0.06,
+  "source": "\"\"\"分类评估：混淆矩阵、精确率、召回率、F1，以及 ROC 曲线下的面积 AUC。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\ny = (rng.random(1000) < 0.1).astype(int)                     # 正类只占 10%\nscore = np.where(y == 1, rng.normal(1.0, 1, 1000), rng.normal(-0.5, 1, 1000))\n\n\ndef report(th):\n    pred = (score >= th).astype(int)\n    tp = ((pred == 1) & (y == 1)).sum(); fp = ((pred == 1) & (y == 0)).sum()\n    fn = ((pred == 0) & (y == 1)).sum(); tn = ((pred == 0) & (y == 0)).sum()\n    prec = tp / max(tp + fp, 1); rec = tp / (tp + fn); f1 = 2 * prec * rec / max(prec + rec, 1e-9)\n    print(f\"阈值 {th:5.2f}: TP={tp:3d} FP={fp:3d} FN={fn:3d} TN={tn:3d}  准确率={(tp+tn)/1000:.3f} 精确率={prec:.3f} 召回率={rec:.3f} F1={f1:.3f}\")\n\n\nfor th in (-0.5, 0.5, 1.5):\n    report(th)\nprint(f\"全部预测为负类的“傻瓜模型”准确率: {(y == 0).mean():.3f}  <- 准确率悖论\")\n\n# AUC = 随机取一个正例和一个负例，正例得分更高的概率\npos, neg = score[y == 1], score[y == 0]\nauc = (pos[:, None] > neg[None, :]).mean()\nprint(f\"AUC = {auc:.3f}\")\n"
+ },
+ "ch04_ex_gd_steps.py": {
+  "hash": "45e0a38f4756d2b0d4cc2fa37a7510789bc99e32",
+  "ok": true,
+  "output": "第 1 步: 梯度  -6.000 -> w = 0.6000\n第 2 步: 梯度  -4.800 -> w = 1.0800\n第 3 步: 梯度  -3.840 -> w = 1.4640\n第 4 步: 梯度  -3.072 -> w = 1.7712\n第 5 步: 梯度  -2.458 -> w = 2.0170\n误差每步缩小为原来的 (1 - 2*lr) = 0.8 倍\nlr=0.5: 收缩因子 |1-2lr| = 0.0 -> 收敛\nlr=1.0: 收缩因子 |1-2lr| = 1.0 -> 来回震荡不收敛\nlr=1.1: 收缩因子 |1-2lr| = 1.2 -> 发散",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：对 f(w) = (w - 3)^2 做梯度下降，学习率 0.1，起点 w = 0。\"\"\"\nw, lr = 0.0, 0.1\nfor t in range(1, 6):\n    g = 2 * (w - 3)\n    w = w - lr * g\n    print(f\"第 {t} 步: 梯度 {g:7.3f} -> w = {w:.4f}\")\nprint(\"误差每步缩小为原来的 (1 - 2*lr) =\", 1 - 2 * lr, \"倍\")\nfor lr in (0.5, 1.0, 1.1):\n    print(f\"lr={lr}: 收缩因子 |1-2lr| = {abs(1 - 2*lr):.1f}\", \"-> 发散\" if abs(1 - 2*lr) > 1 else (\"-> 来回震荡不收敛\" if abs(1 - 2*lr) == 1 else \"-> 收敛\"))\n"
+ },
+ "ch04_gradient_descent.py": {
+  "hash": "b25e6a5b92dda09fdddea8b3ecefb447ede61bb4",
+  "ok": true,
+  "output": "正规方程: [ 1.004  2.043 -2.92 ]\n批量梯度下降 lr=0.01: w=[ 0.986  2.047 -2.91 ]  MSE=0.2357\n批量梯度下降 lr=0.1 : w=[ 1.004  2.043 -2.92 ]  MSE=0.2353\n批量梯度下降 lr=0.8 : w=[-3.02955911e+36 -1.55232965e+37  1.49532426e+37]  MSE=7.483e+74\nlr 超过 2/λ_max 时发散，λ_max 为 MSE 海森矩阵最大特征值: 3.159\n小批量 SGD (30 轮): [ 0.993  2.047 -2.921]",
+  "seconds": 0.07,
+  "source": "\"\"\"线性回归的三种解法：正规方程、批量梯度下降、小批量随机梯度下降；以及学习率的影响。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nn = 200\nX = np.column_stack([np.ones(n), rng.uniform(-2, 2, (n, 2))])\nw_true = np.array([1.0, 2.0, -3.0])\ny = X @ w_true + rng.normal(0, 0.5, n)\n\nw_closed = np.linalg.solve(X.T @ X, X.T @ y)\nprint(\"正规方程:\", np.round(w_closed, 3))\n\n\ndef mse_grad(w, Xb, yb):\n    return 2 / len(yb) * Xb.T @ (Xb @ w - yb)\n\n\ndef batch_gd(lr, epochs=200):\n    w = np.zeros(3)\n    for _ in range(epochs):\n        w -= lr * mse_grad(w, X, y)\n    return w\n\n\nfor lr in (0.01, 0.1, 0.8):\n    w = batch_gd(lr)\n    loss = np.mean((X @ w - y) ** 2)\n    print(f\"批量梯度下降 lr={lr:<4}: w={np.round(w, 3)}  MSE={loss:.4g}\")\n\nw = np.zeros(3)\nfor epoch in range(30):                                   # 小批量 SGD，批大小 16\n    for idx in np.array_split(rng.permutation(n), n // 16):\n        w -= 0.05 * mse_grad(w, X[idx], y[idx])\nprint(\"lr 超过 2/λ_max 时发散，λ_max 为 MSE 海森矩阵最大特征值:\", round(float(np.linalg.eigvalsh(2 / n * X.T @ X).max()), 3))\nprint(\"小批量 SGD (30 轮):\", np.round(w, 3))\n"
+ },
+ "ch04_logistic.py": {
+  "hash": "50d9fab2cebf033872fb29e916fa34c58e8d1a9d",
+  "ok": true,
+  "output": "第    1 步: 交叉熵 0.6931\n第   10 步: 交叉熵 0.3994\n第  100 步: 交叉熵 0.1857\n第 2000 步: 交叉熵 0.1562\n参数 [b, w1, w2] = [-0.367  2.253  1.965]  训练准确率 = 0.9325\nw1 的含义: x1 增加 1，正类的几率(odds)乘以 e^w1 = 9.52",
+  "seconds": 0.07,
+  "source": "\"\"\"逻辑回归：sigmoid + 交叉熵损失 + 梯度下降，梯度形式为 X^T (p - y) / n。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(2)\nn = 400\nX0 = rng.normal([-1, -1], 1.0, (n // 2, 2)); X1 = rng.normal([1.5, 1.0], 1.0, (n // 2, 2))\nX = np.vstack([X0, X1]); y = np.r_[np.zeros(n // 2), np.ones(n // 2)]\nXb = np.column_stack([np.ones(n), X])\nsigmoid = lambda z: 1 / (1 + np.exp(-z))\n\nw = np.zeros(3)\nfor step in range(1, 2001):\n    p = sigmoid(Xb @ w)\n    w -= 0.1 * Xb.T @ (p - y) / n\n    if step in (1, 10, 100, 2000):\n        loss = -np.mean(y * np.log(p + 1e-12) + (1 - y) * np.log(1 - p + 1e-12))\n        print(f\"第 {step:4d} 步: 交叉熵 {loss:.4f}\")\nacc = ((sigmoid(Xb @ w) > 0.5) == y).mean()\nprint(\"参数 [b, w1, w2] =\", np.round(w, 3), \" 训练准确率 =\", acc)\nprint(f\"w1 的含义: x1 增加 1，正类的几率(odds)乘以 e^w1 = {np.exp(w[1]):.2f}\")\n"
+ },
+ "ch04_ridge_lasso.py": {
+  "hash": "749a7f364dd60ef8917edacb57275d6ec6627ae4",
+  "ok": true,
+  "output": "最小二乘     : [ 2.8  -1.79  1.49  0.21 -0.01 -0.06  0.05 -0.21]\n岭回归 λ=50  : [ 1.37 -0.9   0.61 -0.07  0.08  0.    0.13 -0.16]\nLasso  λ=0.3 : [ 2.36 -1.45  1.11  0.    0.   -0.    0.   -0.  ]\nLasso 中恰好为 0 的系数个数: 5",
+  "seconds": 0.09,
+  "source": "\"\"\"岭回归 (L2) 与 Lasso (L1)：L2 让系数整体变小，L1 能把不重要的系数压成恰好为 0。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nn, p = 60, 8\nX = rng.normal(size=(n, p))\nw_true = np.array([3, -2, 1.5, 0, 0, 0, 0, 0], float)       # 只有前 3 个特征真正有用\ny = X @ w_true + rng.normal(0, 1, n)\nX = (X - X.mean(0)) / X.std(0); y = y - y.mean()\n\n\ndef ridge(lam):\n    return np.linalg.solve(X.T @ X + lam * np.eye(p), X.T @ y)\n\n\ndef lasso(lam, iters=500):                                     # 坐标下降 + 软阈值\n    w = np.zeros(p)\n    for _ in range(iters):\n        for j in range(p):\n            r = y - X @ w + X[:, j] * w[j]\n            rho = X[:, j] @ r / n\n            w[j] = np.sign(rho) * max(abs(rho) - lam, 0) / (X[:, j] @ X[:, j] / n)\n    return w\n\n\nnp.set_printoptions(precision=2, suppress=True)\nprint(\"最小二乘     :\", ridge(0))\nprint(\"岭回归 λ=50  :\", ridge(50))\nprint(\"Lasso  λ=0.3 :\", lasso(0.3))\nprint(\"Lasso 中恰好为 0 的系数个数:\", int(np.sum(lasso(0.3) == 0)))\n"
+ },
+ "ch04_softmax_gradcheck.py": {
+  "hash": "018f370c5b51323f749444de3c04f48ab4564286",
+  "ok": true,
+  "output": "解析梯度与数值梯度的最大差: 1.87e-11\n每行 softmax 概率之和: [1. 1. 1. 1. 1.]",
+  "seconds": 0.06,
+  "source": "\"\"\"Softmax 回归的梯度检验：解析梯度 X^T (P - Y) / n 与数值梯度对比。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(3)\nn, d, k = 5, 4, 3\nX = rng.normal(size=(n, d)); labels = rng.integers(0, k, n); Y = np.eye(k)[labels]\nW = rng.normal(size=(d, k)) * 0.1\n\n\ndef softmax(Z):\n    Z = Z - Z.max(1, keepdims=True)                 # 减去最大值防止指数溢出\n    E = np.exp(Z); return E / E.sum(1, keepdims=True)\n\n\ndef loss(W):\n    return -np.mean(np.sum(Y * np.log(softmax(X @ W)), 1))\n\n\ngrad = X.T @ (softmax(X @ W) - Y) / n\nnum = np.zeros_like(W); eps = 1e-5\nfor i in range(d):\n    for j in range(k):\n        E = np.zeros_like(W); E[i, j] = eps\n        num[i, j] = (loss(W + E) - loss(W - E)) / (2 * eps)\nprint(\"解析梯度与数值梯度的最大差:\", f\"{np.abs(grad - num).max():.2e}\")\nprint(\"每行 softmax 概率之和:\", softmax(X @ W).sum(1))\n"
+ },
+ "ch05_ensembles.py": {
+  "hash": "f8506317c2681138394dc5268e00a53ffd6d7f9a",
+  "ok": true,
+  "output": "单棵深树 (深度8)        测试 MSE 0.0780\n装袋 30 棵深树          测试 MSE 0.0420  <- 方差降低\n梯度提升 100 棵深度2树  测试 MSE 0.0266  <- 偏差逐步降低",
+  "seconds": 0.38,
+  "source": "\"\"\"集成学习：单棵深树 vs 装袋(bagging) vs 梯度提升(boosting)，回归任务的测试误差对比。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nf = lambda x: np.sin(3 * x) + 0.5 * x\nXtr = rng.uniform(-2, 2, 150); ytr = f(Xtr) + rng.normal(0, 0.3, 150)\nXte = np.linspace(-2, 2, 400); yte = f(Xte)\n\n\ndef fit_tree(x, y, depth):\n    \"\"\"一维回归树：递归地选择使平方误差最小的切分点。\"\"\"\n    if depth == 0 or len(y) < 4:\n        return float(y.mean())\n    xs = np.sort(np.unique(x)); best = None\n    for th in (xs[:-1] + xs[1:]) / 2:\n        l, r = y[x <= th], y[x > th]\n        sse = ((l - l.mean()) ** 2).sum() + ((r - r.mean()) ** 2).sum()\n        if best is None or sse < best[0]: best = (sse, th)\n    if best is None: return float(y.mean())\n    th = best[1]\n    return (th, fit_tree(x[x <= th], y[x <= th], depth - 1), fit_tree(x[x > th], y[x > th], depth - 1))\n\n\ndef predict(t, x):\n    if not isinstance(t, tuple): return np.full_like(x, t, dtype=float)\n    th, l, r = t\n    return np.where(x <= th, predict(l, x), predict(r, x))\n\n\nmse = lambda p: np.mean((p - yte) ** 2)\ndeep = fit_tree(Xtr, ytr, 8)\nprint(f\"单棵深树 (深度8)        测试 MSE {mse(predict(deep, Xte)):.4f}\")\n\npreds = []\nfor b in range(30):                                     # 装袋：自助采样 + 平均\n    idx = rng.integers(0, 150, 150)\n    preds.append(predict(fit_tree(Xtr[idx], ytr[idx], 8), Xte))\nprint(f\"装袋 30 棵深树          测试 MSE {mse(np.mean(preds, 0)):.4f}  <- 方差降低\")\n\nF_tr = np.full(150, ytr.mean()); F_te = np.full(400, ytr.mean())\nfor m in range(100):                                    # 梯度提升：每棵浅树拟合残差\n    t = fit_tree(Xtr, ytr - F_tr, 2)\n    F_tr += 0.1 * predict(t, Xtr); F_te += 0.1 * predict(t, Xte)\nprint(f\"梯度提升 100 棵深度2树  测试 MSE {mse(F_te):.4f}  <- 偏差逐步降低\")\n"
+ },
+ "ch05_ex_pca.py": {
+  "hash": "a7709f899801542206936a223f2cac3bb3b9199b",
+  "ok": true,
+  "output": "特征值(方差): [5.5616 1.4384]\n第一主成分方向: [-0.7882 -0.6154]\n第一主成分解释方差比例: 0.7945",
+  "seconds": 0.05,
+  "source": "\"\"\"例题：二维数据协方差矩阵的主成分。\"\"\"\nimport numpy as np\nS = np.array([[4.0, 2.0], [2.0, 3.0]])\nw, V = np.linalg.eigh(S)\norder = np.argsort(w)[::-1]; w, V = w[order], V[:, order]\nprint(\"特征值(方差):\", np.round(w, 4))\nprint(\"第一主成分方向:\", np.round(V[:, 0], 4))\nprint(\"第一主成分解释方差比例:\", round(w[0] / w.sum(), 4))\n"
+ },
+ "ch05_kmeans_pca.py": {
+  "hash": "cfe6b37cad77a7bbdbff9accea8d2e19ae404445",
+  "ok": true,
+  "output": "第 4 次迭代收敛\n聚类中心:\n [[-0.1  -0.19]\n [-0.15  6.02]\n [ 5.09  5.07]] \n簇内平方和: 210.6\n\n各主成分解释方差比例: [7.777e-01 2.218e-01 5.000e-04]\n前两个主成分累计: 0.9995  -> 可以安全地降到 2 维",
+  "seconds": 0.06,
+  "source": "\"\"\"无监督学习：K 均值聚类 与 主成分分析（用 SVD 计算）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(5)\ncenters = np.array([[0, 0], [5, 5], [0, 6]])\nX = np.vstack([rng.normal(c, 0.8, (60, 2)) for c in centers])\n\nC = X[rng.choice(len(X), 3, replace=False)]              # 随机选 3 个初始中心\nfor it in range(1, 11):\n    lab = np.argmin(((X[:, None] - C[None]) ** 2).sum(-1), 1)   # 分配步\n    newC = np.array([X[lab == k].mean(0) for k in range(3)])    # 更新步\n    inertia = ((X - newC[lab]) ** 2).sum()\n    if np.allclose(newC, C): print(f\"第 {it} 次迭代收敛\"); break\n    C = newC\nprint(\"聚类中心:\\n\", np.round(C[np.argsort(C[:, 0] + C[:, 1])], 2), \"\\n簇内平方和:\", round(inertia, 1))\n\n# PCA：三维数据其实主要分布在一个平面上\nZ = rng.normal(size=(300, 2)) @ np.array([[3, 1, 0.5], [0, 1, 2]]) + 0.1 * rng.normal(size=(300, 3))\nZc = Z - Z.mean(0)\nU, s, Vt = np.linalg.svd(Zc, full_matrices=False)\nratio = s ** 2 / np.sum(s ** 2)\nprint(\"\\n各主成分解释方差比例:\", np.round(ratio, 4))\nprint(\"前两个主成分累计:\", round(ratio[:2].sum(), 4), \" -> 可以安全地降到 2 维\")\n"
+ },
+ "ch05_svm.py": {
+  "hash": "e4a1205c14e8900c9f5a27313d2d9f69756a8a57",
+  "ok": true,
+  "output": "w = [0.277 0.321]  b = -0.053\n间隔宽度 2/||w|| = 4.718\n训练准确率: 1.0\n位于间隔边界上或以内的样本数(支持向量): 24",
+  "seconds": 0.07,
+  "source": "\"\"\"线性 SVM：用次梯度下降最小化 合页损失 + L2 正则，观察间隔与支持向量。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(4)\nX = np.vstack([rng.normal([-2, -2], 0.8, (50, 2)), rng.normal([2, 2], 0.8, (50, 2))])\ny = np.r_[-np.ones(50), np.ones(50)]                     # SVM 标签用 ±1\n\nw, b, C = np.zeros(2), 0.0, 1.0\nfor epoch in range(1, 2001):\n    lr = 0.01\n    margins = y * (X @ w + b)\n    viol = margins < 1                                    # 违反间隔的样本才产生梯度\n    gw = w - C * (y[viol, None] * X[viol]).sum(0) / len(y)\n    gb = -C * y[viol].sum() / len(y)\n    w -= lr * gw; b -= lr * gb\nmargins = y * (X @ w + b)\nprint(\"w =\", np.round(w, 3), \" b =\", round(b, 3))\nprint(f\"间隔宽度 2/||w|| = {2/np.linalg.norm(w):.3f}\")\nprint(\"训练准确率:\", np.mean(np.sign(X @ w + b) == y))\nprint(\"位于间隔边界上或以内的样本数(支持向量):\", int(np.sum(margins <= 1.0 + 1e-3)))\n"
+ },
+ "ch05_tree_split.py": {
+  "hash": "b20fc6232a99af711a1762f8cb6292f32d5fa9ff",
+  "ok": true,
+  "output": "根节点: 基尼 0.4444  熵 0.9183\n最佳阈值 温度 <= 84.0: 加权基尼 0.3636, 信息增益 0.1434 比特",
+  "seconds": 0.05,
+  "source": "\"\"\"决策树如何选择分裂：计算基尼不纯度与信息增益，在所有候选阈值中找最好的划分。\"\"\"\nimport numpy as np\n\n\ndef gini(y):\n    if len(y) == 0: return 0.0\n    p = np.bincount(y, minlength=2) / len(y)\n    return 1 - np.sum(p ** 2)\n\n\ndef entropy(y):\n    p = np.bincount(y, minlength=2) / len(y); p = p[p > 0]\n    return -np.sum(p * np.log2(p))\n\n\n# 是否出去打网球：特征 = 温度，标签 1=去 0=不去\ntemp = np.array([64, 65, 68, 69, 70, 71, 72, 75, 80, 81, 83, 85])\nplay = np.array([1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0])\nprint(f\"根节点: 基尼 {gini(play):.4f}  熵 {entropy(play):.4f}\")\n\nbest = None\nfor th in (temp[:-1] + temp[1:]) / 2:\n    L, R = play[temp <= th], play[temp > th]\n    w_gini = (len(L) * gini(L) + len(R) * gini(R)) / len(play)\n    gain = entropy(play) - (len(L) * entropy(L) + len(R) * entropy(R)) / len(play)\n    if best is None or w_gini < best[1]:\n        best = (th, w_gini, gain)\nprint(f\"最佳阈值 温度 <= {best[0]}: 加权基尼 {best[1]:.4f}, 信息增益 {best[2]:.4f} 比特\")\n"
+ },
+ "ch06_ex_forward.py": {
+  "hash": "6f002a2b626eec5da6ce0ddbed9750b2badee210",
+  "ok": true,
+  "output": "z1 = [1.  0.5]  a1 = ReLU(z1) = [1.  0.5]\nz2 = 0.5  输出 sigmoid(z2) = 0.6225\n784-100-10 网络参数量: 79510",
+  "seconds": 0.05,
+  "source": "\"\"\"例题：一个 2-2-1 网络的前向传播与参数量计算。\"\"\"\nimport numpy as np\nsig = lambda z: 1 / (1 + np.exp(-z))\nx = np.array([1.0, 2.0])\nW1 = np.array([[0.5, -1.0], [0.25, 0.5]]); b1 = np.array([0.0, 0.5])   # 列对应隐藏神经元\nW2 = np.array([1.0, -2.0]); b2 = 0.5\nz1 = x @ W1 + b1; a1 = np.maximum(z1, 0)\nz2 = a1 @ W2 + b2; out = sig(z2)\nprint(\"z1 =\", z1, \" a1 = ReLU(z1) =\", a1)\nprint(\"z2 =\", z2, \" 输出 sigmoid(z2) =\", round(out, 4))\nprint(\"784-100-10 网络参数量:\", 784 * 100 + 100 + 100 * 10 + 10)\n"
+ },
+ "ch06_gradcheck.py": {
+  "hash": "4708665c69688996c7e1729b102b4d9c71278ba0",
+  "ok": true,
+  "output": "W1: 相对误差 8.39e-10 ✓\nb1: 相对误差 1.39e-10 ✓\nW2: 相对误差 2.11e-10 ✓\nb2: 相对误差 3.69e-10 ✓",
+  "seconds": 0.06,
+  "source": "\"\"\"反向传播的正确性检验：解析梯度 vs 数值梯度（中心差分）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nX = rng.normal(size=(6, 3)); Y = rng.normal(size=(6, 2))\nparams = {\"W1\": rng.normal(size=(3, 5)), \"b1\": rng.normal(size=5),\n          \"W2\": rng.normal(size=(5, 2)), \"b2\": rng.normal(size=2)}\n\n\ndef forward(p):\n    z1 = X @ p[\"W1\"] + p[\"b1\"]; a1 = np.maximum(z1, 0)        # ReLU\n    out = a1 @ p[\"W2\"] + p[\"b2\"]\n    return 0.5 * np.mean(np.sum((out - Y) ** 2, 1)), (z1, a1, out)\n\n\ndef backward(p):\n    _, (z1, a1, out) = forward(p)\n    d_out = (out - Y) / len(X)                                 # 输出层误差 δ^L\n    g = {\"W2\": a1.T @ d_out, \"b2\": d_out.sum(0)}\n    d1 = (d_out @ p[\"W2\"].T) * (z1 > 0)                        # δ^l = (W^{l+1} δ^{l+1}) ⊙ σ'(z^l)\n    g[\"W1\"] = X.T @ d1; g[\"b1\"] = d1.sum(0)\n    return g\n\n\ng = backward(params)\neps = 1e-6\nfor k, v in params.items():\n    num = np.zeros_like(v)\n    for idx in np.ndindex(v.shape):\n        old = v[idx]\n        v[idx] = old + eps; lp, _ = forward(params)\n        v[idx] = old - eps; lm, _ = forward(params)\n        v[idx] = old; num[idx] = (lp - lm) / (2 * eps)\n    rel = np.abs(num - g[k]).max() / (np.abs(num).max() + 1e-12)\n    print(f\"{k}: 相对误差 {rel:.2e}\", \"✓\" if rel < 1e-6 else \"✗\")\n"
+ },
+ "ch06_mlp_xor.py": {
+  "hash": "cf4bd1a00785ff360261791314efeb35d43326eb",
+  "ok": true,
+  "output": "第    1 步 损失 0.7219\n第  100 步 损失 0.0456\n第 1000 步 损失 0.0013\n第 5000 步 损失 0.0002\n预测概率: [0. 1. 1. 0.]  真实标签: [0 1 1 0]",
+  "seconds": 0.14,
+  "source": "\"\"\"两层神经网络 + 反向传播，从零学会 XOR。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], float)\ny = np.array([[0], [1], [1], [0]], float)\nsig = lambda z: 1 / (1 + np.exp(-z))\n\nW1 = rng.normal(0, 1, (2, 8)); b1 = np.zeros(8)      # 隐藏层 8 个神经元\nW2 = rng.normal(0, 1, (8, 1)); b2 = np.zeros(1)\nlr = 1.0\nfor step in range(1, 5001):\n    # 前向传播\n    h = np.tanh(X @ W1 + b1)\n    p = sig(h @ W2 + b2)\n    loss = -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))\n    # 反向传播（链式法则，从输出往回）\n    dz2 = (p - y) / len(X)                           # sigmoid + 交叉熵的梯度\n    dW2 = h.T @ dz2; db2 = dz2.sum(0)\n    dh = dz2 @ W2.T\n    dz1 = dh * (1 - h ** 2)                          # tanh 的导数\n    dW1 = X.T @ dz1; db1 = dz1.sum(0)\n    for P, G in ((W1, dW1), (b1, db1), (W2, dW2), (b2, db2)):\n        P -= lr * G\n    if step in (1, 100, 1000, 5000):\n        print(f\"第 {step:4d} 步 损失 {loss:.4f}\")\nprint(\"预测概率:\", np.round(p.ravel(), 3), \" 真实标签:\", y.ravel().astype(int))\n"
+ },
+ "ch06_perceptron.py": {
+  "hash": "5c95ab736c692de3b5b626e3d4ebfb52eb70e982",
+  "ok": true,
+  "output": "AND: 第   6 轮结束, w=[2. 1.], b=-2, 准确率 1.00 (收敛)\nOR : 第   4 轮结束, w=[1. 1.], b=+0, 准确率 1.00 (收敛)\nXOR: 第 100 轮结束, w=[-1.  0.], b=+1, 准确率 0.50 (无法收敛)",
+  "seconds": 0.05,
+  "source": "\"\"\"感知机学习规则：能学会 AND、OR，却学不会 XOR（线性不可分）——Minsky & Papert 1969 的经典结论。\"\"\"\nimport numpy as np\n\nX = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])\ntasks = {\"AND\": [0, 0, 0, 1], \"OR\": [0, 1, 1, 1], \"XOR\": [0, 1, 1, 0]}\n\nfor name, y in tasks.items():\n    y = np.array(y); w = np.zeros(2); b = 0.0\n    for epoch in range(100):\n        errors = 0\n        for xi, yi in zip(X, y):\n            pred = int(w @ xi + b > 0)               # 阶跃激活\n            if pred != yi:                           # 只在出错时更新\n                w += (yi - pred) * xi; b += (yi - pred); errors += 1\n        if errors == 0: break\n    acc = np.mean((X @ w + b > 0).astype(int) == y)\n    print(f\"{name:3s}: 第 {epoch+1:3d} 轮结束, w={w}, b={b:+.0f}, 准确率 {acc:.2f}\", \"(收敛)\" if errors == 0 else \"(无法收敛)\")\n"
+ },
+ "ch07_batchnorm.py": {
+  "hash": "11e38496ae2508e220241f6d22042f2947b5466a",
+  "ok": true,
+  "output": "归一化前 均值: [ 4.036 -2.991  0.359]  标准差: [11.221  0.084  0.815]\n标准化后 均值: [-0.  0. -0.]  标准差: [1.    0.999 1.   ]\nγ,β 变换后 均值: [-0.  1. -1.]  标准差: [1.    1.999 0.5  ]  (= β 与 γ)\n滑动平均估计的总体均值: [ 5.563 -3.004  0.039]",
+  "seconds": 0.06,
+  "source": "\"\"\"批量归一化的前向计算：对小批量逐特征标准化，再用可学习的 γ、β 缩放平移。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nz = rng.normal(loc=[5.0, -3.0, 0.0], scale=[10.0, 0.1, 1.0], size=(32, 3))   # 三个特征尺度差异巨大\nmu, var = z.mean(0), z.var(0)\nz_hat = (z - mu) / np.sqrt(var + 1e-5)\ngamma, beta = np.array([1.0, 2.0, 0.5]), np.array([0.0, 1.0, -1.0])\nout = gamma * z_hat + beta\nnp.set_printoptions(precision=3, suppress=True)\nprint(\"归一化前 均值:\", z.mean(0), \" 标准差:\", z.std(0))\nprint(\"标准化后 均值:\", z_hat.mean(0), \" 标准差:\", z_hat.std(0))\nprint(\"γ,β 变换后 均值:\", out.mean(0), \" 标准差:\", out.std(0), \" (= β 与 γ)\")\n# 推理时用训练期间累积的滑动平均，而不是当前批的统计量\nrunning_mu = np.zeros(3)\nfor _ in range(200):\n    batch = rng.normal(loc=[5.0, -3.0, 0.0], scale=[10.0, 0.1, 1.0], size=(32, 3))\n    running_mu = 0.9 * running_mu + 0.1 * batch.mean(0)\nprint(\"滑动平均估计的总体均值:\", running_mu)\n"
+ },
+ "ch07_ex_adam.py": {
+  "hash": "a77ebd743ca8da5d4b953877ee33b71633a33fda",
+  "ok": true,
+  "output": "m=0.0500, v=0.000250, m_hat=0.5000, v_hat=0.2500\n参数更新量 = 0.001000  (第一步的步长约等于学习率，与梯度大小无关)\nHe 初始化 fan_in=512 时标准差: 0.0625",
+  "seconds": 0.01,
+  "source": "\"\"\"例题：手算 Adam 的第一步更新。\"\"\"\nimport math\ng, lr, b1, b2, eps = 0.5, 0.001, 0.9, 0.999, 1e-8\nm = (1 - b1) * g; v = (1 - b2) * g ** 2\nm_hat = m / (1 - b1); v_hat = v / (1 - b2)\nstep = lr * m_hat / (math.sqrt(v_hat) + eps)\nprint(f\"m={m:.4f}, v={v:.6f}, m_hat={m_hat:.4f}, v_hat={v_hat:.4f}\")\nprint(f\"参数更新量 = {step:.6f}  (第一步的步长约等于学习率，与梯度大小无关)\")\nprint(\"He 初始化 fan_in=512 时标准差:\", math.sqrt(2 / 512))\n"
+ },
+ "ch07_init_vanishing.py": {
+  "hash": "28d75107c31a9045e9c26a032c0cf82edbb24000",
+  "ok": true,
+  "output": "激活    初始化          第20层激活标准差   梯度传回第1层后相对第20层的倍数\nsigmoid Xavier 1/√n            0.1195       8.76e-13\nrelu    Xavier 1/√n         0.0009632        0.00494\nrelu    He √(2/n)              0.6448           2.63\nsigmoid: 导数最大只有 0.25，梯度传回浅层时缩小约 1e-12 倍 -> 梯度消失\nReLU + Xavier: ReLU 砍掉一半信号，方差每层减半，20 层后激活值几乎为 0\nReLU + He: 方差乘 2 正好补偿，激活和梯度的尺度在各层之间基本保持稳定",
+  "seconds": 0.09,
+  "source": "\"\"\"梯度消失与权重初始化：比较 20 层网络中激活值与梯度的尺度。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nx = rng.normal(size=(256, 256))\nL = 20\nact = {\"sigmoid\": (lambda z: 1 / (1 + np.exp(-z)), lambda a: a * (1 - a)),\n       \"relu\": (lambda z: np.maximum(z, 0), lambda a: (a > 0).astype(float))}\n\n\ndef run(name, std_fn):\n    f, df = act[name]\n    a, Ws, As = x, [], []\n    for _ in range(L):\n        W = rng.normal(0, std_fn(256), (256, 256)); a = f(a @ W)\n        Ws.append(W); As.append(a)\n    g = np.ones_like(a)                       # 反向传播一个全 1 的梯度\n    norms = []\n    for W, a in zip(reversed(Ws), reversed(As)):\n        g = (g * df(a)) @ W.T; norms.append(np.abs(g).mean())\n    return As[-1].std(), norms[-1], norms[0]\n\n\ncases = [(\"sigmoid\", \"Xavier 1/√n\", lambda n: np.sqrt(1 / n)),\n         (\"relu\", \"Xavier 1/√n\", lambda n: np.sqrt(1 / n)), (\"relu\", \"He √(2/n)\", lambda n: np.sqrt(2 / n))]\nprint(\"激活    初始化          第20层激活标准差   梯度传回第1层后相对第20层的倍数\")\nfor name, label, fn in cases:\n    s, g_first, g_last = run(name, fn)\n    print(f\"{name:7s} {label:14s} {s:14.4g}   {g_first / g_last:12.3g}\")\nprint(\"sigmoid: 导数最大只有 0.25，梯度传回浅层时缩小约 1e-12 倍 -> 梯度消失\")\nprint(\"ReLU + Xavier: ReLU 砍掉一半信号，方差每层减半，20 层后激活值几乎为 0\")\nprint(\"ReLU + He: 方差乘 2 正好补偿，激活和梯度的尺度在各层之间基本保持稳定\")\n"
+ },
+ "ch07_optimizers.py": {
+  "hash": "c57622df596cfc65b5c4b9219c81a084bb954eca",
+  "ok": true,
+  "output": "起点损失 f = 75.0\nSGD       第10/50/200步的损失:  2.46e+01    1.42e+00    3.24e-05\nMomentum  第10/50/200步的损失:  1.54e+01    4.58e-01    3.57e-08\nRMSProp   第10/50/200步的损失:  2.52e+00    1.27e-05    3.01e-02\nAdam      第10/50/200步的损失:  2.79e+01    7.31e-02    4.61e-08\nSGD 的学习率受陡峭方向限制 (需 < 2/50)，在平缓方向上走得很慢；动量在平缓方向上累积速度；\nRMSProp/Adam 按每个方向梯度的大小单独缩放步长，两个方向的步子差不多大。没有哪种优化器在所有问题上都最好。",
+  "seconds": 0.05,
+  "source": "\"\"\"优化器对比：在一个狭长的“峡谷”形二次函数上比较 SGD、动量、RMSProp 与 Adam。\"\"\"\nimport numpy as np\n\nA = np.diag([1.0, 50.0])                      # 条件数 50：一个方向平缓、一个方向陡峭\nf = lambda w: 0.5 * w @ A @ w\ngrad = lambda w: A @ w\nstart = np.array([10.0, 1.0])\n\n\ndef run(update):\n    w, state, log = start.copy(), {}, []\n    for t in range(1, 201):\n        w = update(w, grad(w), state, t)\n        if t in (10, 50, 200): log.append(f\"{f(w):9.2e}\")\n    return \"   \".join(log)\n\n\ndef sgd(w, g, s, t, lr=0.035): return w - lr * g\ndef momentum(w, g, s, t, lr=0.035, beta=0.9):\n    s[\"v\"] = beta * s.get(\"v\", 0) + g; return w - lr * s[\"v\"]\ndef rmsprop(w, g, s, t, lr=1.0, beta=0.9, eps=1e-8):\n    lr = lr / np.sqrt(t)                      # 学习率衰减，否则会在最小值附近以 lr 的幅度来回跳\n    s[\"r\"] = beta * s.get(\"r\", 0) + (1 - beta) * g ** 2; return w - lr * g / (np.sqrt(s[\"r\"]) + eps)\ndef adam(w, g, s, t, lr=0.3, b1=0.9, b2=0.999, eps=1e-8):\n    s[\"m\"] = b1 * s.get(\"m\", 0) + (1 - b1) * g; s[\"v\"] = b2 * s.get(\"v\", 0) + (1 - b2) * g ** 2\n    m_hat = s[\"m\"] / (1 - b1 ** t); v_hat = s[\"v\"] / (1 - b2 ** t)\n    return w - lr * m_hat / (np.sqrt(v_hat) + eps)\n\n\nprint(f\"起点损失 f = {f(start):.1f}\")\nfor name, fn in [(\"SGD\", sgd), (\"Momentum\", momentum), (\"RMSProp\", rmsprop), (\"Adam\", adam)]:\n    print(f\"{name:9s} 第10/50/200步的损失: {run(fn)}\")\nprint(\"SGD 的学习率受陡峭方向限制 (需 < 2/50)，在平缓方向上走得很慢；动量在平缓方向上累积速度；\")\nprint(\"RMSProp/Adam 按每个方向梯度的大小单独缩放步长，两个方向的步子差不多大。没有哪种优化器在所有问题上都最好。\")\n"
+ },
+ "ch07_regularization.py": {
+  "hash": "e1d94835067eb51ee07d06e2edecee780a22d3a6",
+  "ok": true,
+  "output": "无正则化           训练准确率 1.000   测试准确率 0.637\nL2 λ=0.03      训练准确率 1.000   测试准确率 0.668\nL2 λ=0.1       训练准确率 0.850   测试准确率 0.720\nDropout p=0.5  训练准确率 1.000   测试准确率 0.651\nDropout p=0.7  训练准确率 1.000   测试准确率 0.658\n无正则化时训练集 100% 而测试只有约 64%：严重过拟合。正则化牺牲一点训练表现，换来更好的泛化。",
+  "seconds": 1.65,
+  "source": "\"\"\"正则化对比：20 维输入里只有 2 维有用、训练样本只有 60 个，一个 256 单元的网络很容易过拟合。\n比较 无正则化 / L2 权重衰减 / Dropout 在“干净”测试集上的准确率。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nD = 20\n\n\ndef make(n, noisy):\n    X = rng.normal(size=(n, D))\n    y = (X[:, 0] + X[:, 1] > 0).astype(float)          # 真实规律只用到前两个特征\n    if noisy:\n        flip = rng.random(n) < 0.1; y[flip] = 1 - y[flip]\n    return X, y\n\n\nXtr, ytr = make(60, True); Xte, yte = make(4000, False)\nsig = lambda z: 1 / (1 + np.exp(-np.clip(z, -50, 50)))\n\n\ndef train(l2=0.0, p_drop=0.0, steps=3000, H=256, lr=0.1, seed=1):\n    r = np.random.default_rng(seed)\n    W1 = r.normal(0, np.sqrt(2 / D), (D, H)); b1 = np.zeros(H)\n    W2 = r.normal(0, np.sqrt(1 / H), (H, 1)); b2 = np.zeros(1)\n    y = ytr[:, None]\n    for _ in range(steps):\n        h = np.maximum(Xtr @ W1 + b1, 0)\n        if p_drop:                                      # inverted dropout：随机置零并除以保留概率\n            h = h * (r.random(h.shape) > p_drop) / (1 - p_drop)\n        p = sig(h @ W2 + b2)\n        d2 = (p - y) / len(y)\n        dW2 = h.T @ d2 + l2 * W2; db2 = d2.sum(0)      # L2 正则的梯度就是 λW（权重衰减）\n        dh = d2 @ W2.T * (h > 0)\n        dW1 = Xtr.T @ dh + l2 * W1; db1 = dh.sum(0)\n        W1 -= lr * dW1; b1 -= lr * db1; W2 -= lr * dW2; b2 -= lr * db2\n    acc = lambda X, y: ((sig(np.maximum(X @ W1 + b1, 0) @ W2 + b2).ravel() > 0.5) == y).mean()\n    return acc(Xtr, ytr), acc(Xte, yte)\n\n\nfor name, kw in [(\"无正则化\", {}), (\"L2 λ=0.03\", {\"l2\": 0.03}), (\"L2 λ=0.1\", {\"l2\": 0.1}),\n                 (\"Dropout p=0.5\", {\"p_drop\": 0.5}), (\"Dropout p=0.7\", {\"p_drop\": 0.7})]:\n    tr, te = train(**kw)\n    print(f\"{name:14s} 训练准确率 {tr:.3f}   测试准确率 {te:.3f}\")\nprint(\"无正则化时训练集 100% 而测试只有约 64%：严重过拟合。正则化牺牲一点训练表现，换来更好的泛化。\")\n"
+ },
+ "ch09_ex_storage.py": {
+  "hash": "4a4bbde3d827573370383202b5dfaddfb856ef6c",
+  "ok": true,
+  "output": "1024x1024, 1 通道, 每通道 8 位, 灰度级 256: 1.00 MB\n1024x1024, 3 通道, 每通道 8 位, 灰度级 256: 3.00 MB\n512x512, 1 通道, 每通道 1 位, 灰度级 2: 0.03 MB\n4000x3000, 3 通道, 每通道 8 位, 灰度级 256: 34.33 MB",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：图像的采样、量化与存储量。\"\"\"\nfor (h, w, c, bits) in [(1024, 1024, 1, 8), (1024, 1024, 3, 8), (512, 512, 1, 1), (4000, 3000, 3, 8)]:\n    size = h * w * c * bits / 8\n    print(f\"{h}x{w}, {c} 通道, 每通道 {bits} 位, 灰度级 {2**bits}: {size/1024/1024:.2f} MB\")\n"
+ },
+ "ch09_filters.py": {
+  "hash": "6d14537945e23579b28be72ce7615e9b80d83332",
+  "ok": true,
+  "output": "高斯噪声: 去噪前 PSNR 22.08 dB\n   3x3 均值     -> 25.64 dB\n   5x5 高斯 σ=1 -> 26.10 dB\n   3x3 中值     -> 28.99 dB\n椒盐噪声: 去噪前 PSNR 14.86 dB\n   3x3 均值     -> 21.61 dB\n   5x5 高斯 σ=1 -> 22.26 dB\n   3x3 中值     -> 30.37 dB\n中值滤波是非线性滤波，特别擅长去除椒盐噪声，且对边缘的保持更好",
+  "seconds": 0.14,
+  "source": "\"\"\"空间滤波：均值、高斯、中值滤波对高斯噪声与椒盐噪声的去噪效果（用 PSNR 衡量）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nH = W = 64\nyy, xx = np.mgrid[:H, :W]\nclean = np.where((xx - 32) ** 2 + (yy - 32) ** 2 < 300, 200.0, 50.0)       # 一个亮圆盘\n\n\ndef psnr(a, b): return 10 * np.log10(255 ** 2 / np.mean((a - b) ** 2))\n\n\ndef window_apply(img, k, fn):\n    p = k // 2; pad = np.pad(img, p, mode=\"edge\"); out = np.empty_like(img)\n    for i in range(img.shape[0]):\n        for j in range(img.shape[1]):\n            out[i, j] = fn(pad[i:i + k, j:j + k])\n    return out\n\n\ng = np.exp(-(np.arange(5) - 2) ** 2 / (2 * 1.0 ** 2)); G = np.outer(g, g); G /= G.sum()\nfilters = {\"3x3 均值\": lambda x: window_apply(x, 3, np.mean),\n           \"5x5 高斯 σ=1\": lambda x: window_apply(x, 5, lambda w: np.sum(w * G)),\n           \"3x3 中值\": lambda x: window_apply(x, 3, np.median)}\n\ngauss = clean + rng.normal(0, 20, clean.shape)\nsp = clean.copy(); m = rng.random(clean.shape); sp[m < 0.05] = 0; sp[m > 0.95] = 255\nfor noise_name, noisy in [(\"高斯噪声\", gauss), (\"椒盐噪声\", sp)]:\n    print(f\"{noise_name}: 去噪前 PSNR {psnr(noisy, clean):.2f} dB\")\n    for name, f in filters.items():\n        print(f\"   {name:10s} -> {psnr(f(noisy), clean):.2f} dB\")\nprint(\"中值滤波是非线性滤波，特别擅长去除椒盐噪声，且对边缘的保持更好\")\n"
+ },
+ "ch09_fourier.py": {
+  "hash": "a0525d5e47d18e60bb168ef4d4be9c8fac59ec05",
+  "ok": true,
+  "output": "频谱中幅度最大的位置(中心为直流分量 32,32): [[32, 16], [32, 32], [32, 48]]\n去噪前误差 0.2500 -> 陷波滤波后 0.0056\n低通后方块边缘处的值(本应是0/1的跳变): [-0.002  0.163  0.396  0.653  0.881]\n卷积定理验证(两种方式结果一致): True",
+  "seconds": 0.06,
+  "source": "\"\"\"频率域：二维傅里叶变换、去除周期噪声，以及卷积定理的验证。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(2)\nN = 64\nyy, xx = np.mgrid[:N, :N]\nimg = np.where((abs(xx - 32) < 12) & (abs(yy - 32) < 12), 1.0, 0.0)       # 方块\nnoisy = img + 0.5 * np.sin(2 * np.pi * 16 * xx / N)                       # 叠加竖条纹周期噪声\n\nF = np.fft.fftshift(np.fft.fft2(noisy))\nmag = np.abs(F)\npeaks = np.argwhere(mag > 0.5 * mag.max())\nprint(\"频谱中幅度最大的位置(中心为直流分量 32,32):\", peaks.tolist())\nnotch = np.ones_like(F); notch[32, 32 - 16] = notch[32, 32 + 16] = 0     # 陷波滤波器去掉两个噪声峰\nclean = np.real(np.fft.ifft2(np.fft.ifftshift(F * notch)))\nprint(f\"去噪前误差 {np.abs(noisy - img).mean():.4f} -> 陷波滤波后 {np.abs(clean - img).mean():.4f}\")\n\n# 理想低通：只保留半径 8 以内的低频，图像变模糊（边缘属于高频）\nr = np.sqrt((xx - 32) ** 2 + (yy - 32) ** 2)\nlow = np.real(np.fft.ifft2(np.fft.ifftshift(np.fft.fftshift(np.fft.fft2(img)) * (r < 8))))\nprint(f\"低通后方块边缘处的值(本应是0/1的跳变): {np.round(low[32, 18:23], 3)}\")\n\n# 卷积定理：空间域循环卷积 = 频率域逐点相乘\nk = np.zeros((N, N)); k[:3, :3] = 1 / 9\nspatial = np.zeros((N, N))\nfor dy in range(3):\n    for dx in range(3):\n        spatial += np.roll(np.roll(img, dy, 0), dx, 1) / 9\nfreq = np.real(np.fft.ifft2(np.fft.fft2(img) * np.fft.fft2(k)))\nprint(\"卷积定理验证(两种方式结果一致):\", np.allclose(spatial, freq))\n"
+ },
+ "ch09_histogram.py": {
+  "hash": "2b93fa95d3fda8a2113f088480f2a9e6c6049ccf",
+  "ok": true,
+  "output": "原图 灰度范围: 61 - 157  标准差: 12.0\n反转后均值: 145.4   伽马0.5后均值: 166.4\n均衡化后 灰度范围: 0 - 255  标准差: 73.6\n均衡化后各 64 级区间的像素占比: [0.249 0.22  0.274 0.257]",
+  "seconds": 0.06,
+  "source": "\"\"\"灰度变换与直方图均衡化：把挤在窄区间里的灰度拉开，增强对比度。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nimg = np.clip(rng.normal(110, 12, (128, 128)), 0, 255).astype(np.uint8)   # 低对比度图像\nprint(\"原图 灰度范围:\", img.min(), \"-\", img.max(), \" 标准差:\", round(img.std(), 1))\n\nneg = 255 - img                                                            # 反转\ngamma = (255 * (img / 255) ** 0.5).astype(np.uint8)                        # 伽马校正 γ=0.5 提亮暗部\nprint(\"反转后均值:\", round(neg.mean(), 1), \"  伽马0.5后均值:\", round(gamma.mean(), 1))\n\nhist = np.bincount(img.ravel(), minlength=256)\ncdf = np.cumsum(hist) / img.size                                           # 累积分布函数\nlut = np.round(255 * (cdf - cdf.min()) / (1 - cdf.min())).astype(np.uint8)  # 映射表\neq = lut[img]\nprint(\"均衡化后 灰度范围:\", eq.min(), \"-\", eq.max(), \" 标准差:\", round(eq.std(), 1))\nh_eq = np.bincount(eq.ravel(), minlength=256)\nprint(\"均衡化后各 64 级区间的像素占比:\", np.round([h_eq[i:i+64].sum() / eq.size for i in range(0, 256, 64)], 3))\n"
+ },
+ "ch09_otsu_morph.py": {
+  "hash": "faffe3485d4ee4cdc3247d03d6aa5f0afb8cb342",
+  "ok": true,
+  "output": "大津法阈值: 114\n阈值分割后的连通区域数: 47\n开运算后的连通区域数: 4 (应为 4 个细胞)",
+  "seconds": 0.06,
+  "source": "\"\"\"分割与形态学：大津法自动选阈值，开运算去除小噪点，再数连通区域个数。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(3)\nimg = np.full((80, 80), 60.0)\nfor cy, cx, r in [(20, 20, 9), (25, 60, 7), (60, 30, 11), (58, 62, 6)]:  # 4 个亮的“细胞”\n    yy, xx = np.mgrid[:80, :80]\n    img[(yy - cy) ** 2 + (xx - cx) ** 2 < r * r] = 170\nimg += rng.normal(0, 15, img.shape)\nimg[rng.random(img.shape) < 0.01] = 200                                     # 零星亮噪点\nimg = np.clip(img, 0, 255).astype(np.uint8)\n\nhist = np.bincount(img.ravel(), minlength=256) / img.size\nbest_t, best_var = 0, -1\nfor t in range(1, 256):                                                      # 大津法：最大化类间方差\n    w0, w1 = hist[:t].sum(), hist[t:].sum()\n    if w0 == 0 or w1 == 0: continue\n    m0 = (np.arange(t) * hist[:t]).sum() / w0; m1 = (np.arange(t, 256) * hist[t:]).sum() / w1\n    var = w0 * w1 * (m0 - m1) ** 2\n    if var > best_var: best_t, best_var = t, var\nbinary = img >= best_t\nprint(\"大津法阈值:\", best_t)\n\n\ndef erode(b): p = np.pad(b, 1); return np.all([p[i:i+80, j:j+80] for i in range(3) for j in range(3)], 0)\ndef dilate(b): p = np.pad(b, 1); return np.any([p[i:i+80, j:j+80] for i in range(3) for j in range(3)], 0)\n\n\ndef count_components(b):\n    lab = np.zeros(b.shape, int); n = 0\n    for s in zip(*np.nonzero(b)):\n        if lab[s]: continue\n        n += 1; stack = [s]; lab[s] = n\n        while stack:\n            y, x = stack.pop()\n            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):\n                v = (y + dy, x + dx)\n                if 0 <= v[0] < 80 and 0 <= v[1] < 80 and b[v] and not lab[v]:\n                    lab[v] = n; stack.append(v)\n    return n\n\n\nprint(\"阈值分割后的连通区域数:\", count_components(binary))\nopened = dilate(erode(binary))                                               # 开运算 = 先腐蚀再膨胀\nprint(\"开运算后的连通区域数:\", count_components(opened), \"(应为 4 个细胞)\")\n"
+ },
+ "ch10_average_precision.py": {
+  "hash": "bb7f75169d61214c5cc8b44ac3528ae1926377d9",
+  "ok": true,
+  "output": "前  1 个: 精确率 1.000  召回率 0.167\n前  2 个: 精确率 1.000  召回率 0.333\n前  3 个: 精确率 0.667  召回率 0.333\n前  4 个: 精确率 0.750  召回率 0.500\n前  5 个: 精确率 0.800  召回率 0.667\n前  6 个: 精确率 0.667  召回率 0.667\n前  7 个: 精确率 0.571  召回率 0.667\n前  8 个: 精确率 0.625  召回率 0.833\n前  9 个: 精确率 0.556  召回率 0.833\n前 10 个: 精确率 0.600  召回率 1.000\nAP = 0.8042",
+  "seconds": 0.05,
+  "source": "\"\"\"平均精度 AP：按置信度排序检测结果，画出精确率-召回率曲线，再计算曲线下面积。\"\"\"\nimport numpy as np\n\n# 10 个检测结果（已按置信度从高到低排序），1 = 与某个真实框 IoU≥0.5 的正确检测；图中共有 6 个真实目标\ntp = np.array([1, 1, 0, 1, 1, 0, 0, 1, 0, 1])\nn_gt = 6\ncum_tp = np.cumsum(tp); cum_fp = np.cumsum(1 - tp)\nprecision = cum_tp / (cum_tp + cum_fp); recall = cum_tp / n_gt\nfor k in range(len(tp)):\n    print(f\"前 {k+1:2d} 个: 精确率 {precision[k]:.3f}  召回率 {recall[k]:.3f}\")\n\n# 所有点插值：把精确率改成“右侧最大值”，再对召回率积分（VOC2010+ / COCO 的做法）\np_interp = np.maximum.accumulate(precision[::-1])[::-1]\nr = np.concatenate([[0], recall])\nap = np.sum((r[1:] - r[:-1]) * p_interp)\nprint(f\"AP = {ap:.4f}\")\n"
+ },
+ "ch10_iou_nms.py": {
+  "hash": "99955e918c93c9ed0d8fafdf25dabb91acbbe411",
+  "ok": true,
+  "output": "IoU 例子: 0.1429\nNMS 保留的框索引: [0, 3]  对应得分: [0.9, 0.85]\n框0 与 框1 的 IoU = 0.816\n框0 与 框2 的 IoU = 0.763",
+  "seconds": 0.05,
+  "source": "\"\"\"目标检测的基本工具：交并比 IoU 与非极大值抑制 NMS。框格式为 (x1, y1, x2, y2)。\"\"\"\nimport numpy as np\n\n\ndef iou(a, b):\n    x1, y1 = max(a[0], b[0]), max(a[1], b[1]); x2, y2 = min(a[2], b[2]), min(a[3], b[3])\n    inter = max(0, x2 - x1) * max(0, y2 - y1)\n    area = lambda r: (r[2] - r[0]) * (r[3] - r[1])\n    return inter / (area(a) + area(b) - inter)\n\n\ndef nms(boxes, scores, thr=0.5):\n    order = list(np.argsort(scores)[::-1]); keep = []\n    while order:\n        i = order.pop(0); keep.append(i)                     # 保留当前得分最高的框\n        order = [j for j in order if iou(boxes[i], boxes[j]) < thr]   # 删除与它重叠过大的框\n    return keep\n\n\nprint(\"IoU 例子:\", round(iou((0, 0, 10, 10), (5, 5, 15, 15)), 4))\nboxes = [(10, 10, 60, 60), (12, 14, 62, 58), (8, 12, 55, 65), (100, 100, 150, 160), (105, 98, 148, 150)]\nscores = np.array([0.90, 0.75, 0.60, 0.85, 0.70])\nkeep = [int(i) for i in nms(boxes, scores)]\nprint(\"NMS 保留的框索引:\", keep, \" 对应得分:\", scores[keep].tolist())\nfor i in range(1, 3):\n    print(f\"框0 与 框{i} 的 IoU = {iou(boxes[0], boxes[i]):.3f}\")\n"
+ },
+ "ch10_seg_metrics.py": {
+  "hash": "e099af896ef3f10a9482cceeea200965935aba86",
+  "ok": true,
+  "output": "全预测为背景     像素准确率 0.960  IoU 0.000  Dice 0.000\n偏移 5 像素    像素准确率 0.965  IoU 0.391  Dice 0.562\n\n转置卷积输出尺寸 o = (n-1)*s - 2p + k:\n  输入  7, 核 4, 步长 2, 填充 1 -> 输出 14\n  输入 14, 核 4, 步长 2, 填充 1 -> 输出 28\n  输入 28, 核 2, 步长 2, 填充 0 -> 输出 56",
+  "seconds": 0.05,
+  "source": "\"\"\"分割评估与上采样：像素准确率的陷阱、IoU 与 Dice 系数；转置卷积的输出尺寸。\"\"\"\nimport numpy as np\n\nH = W = 100\ngt = np.zeros((H, W), bool); gt[40:60, 40:60] = True                      # 目标只占 4% 的像素\npred_empty = np.zeros_like(gt)                                            # 什么都不预测\npred_shift = np.zeros_like(gt); pred_shift[45:65, 45:65] = True           # 预测框偏移了 5 像素\n\n\ndef metrics(p, g):\n    inter = (p & g).sum(); union = (p | g).sum()\n    return (p == g).mean(), inter / union if union else 1.0, 2 * inter / (p.sum() + g.sum()) if (p.sum() + g.sum()) else 1.0\n\n\nfor name, p in [(\"全预测为背景\", pred_empty), (\"偏移 5 像素\", pred_shift)]:\n    acc, iou, dice = metrics(p, gt)\n    print(f\"{name:10s} 像素准确率 {acc:.3f}  IoU {iou:.3f}  Dice {dice:.3f}\")\n\nprint(\"\\n转置卷积输出尺寸 o = (n-1)*s - 2p + k:\")\nfor n, k, s, p in [(7, 4, 2, 1), (14, 4, 2, 1), (28, 2, 2, 0)]:\n    print(f\"  输入 {n:2d}, 核 {k}, 步长 {s}, 填充 {p} -> 输出 {(n - 1) * s - 2 * p + k}\")\n"
+ },
+ "ch10_transfer_params.py": {
+  "hash": "5e1d26e115bca12419cfe4608afbbf93554726b3",
+  "ok": true,
+  "output": "VGG16 卷积基参数: 14,714,688\nVGG16 原分类头 (3 个全连接层) 参数: 123,642,856\n合计: 138,357,544  (约 1.38 亿，大部分在全连接层)\n\n新任务 (5 类，用全局平均池化+一个全连接层):\n  特征提取 (冻结全部卷积基): 需训练 2,565 个参数\n  微调最后一个卷积块 + 新头:   需训练 7,081,989 个参数\n  全部微调:                   需训练 14,717,253 个参数",
+  "seconds": 0.02,
+  "source": "\"\"\"迁移学习：VGG16 各部分的参数量，以及“冻结卷积基、只训练新分类头”能少训练多少参数。\"\"\"\n\n\ndef conv(cin, cout, k=3): return (k * k * cin + 1) * cout\ndef fc(n_in, n_out): return (n_in + 1) * n_out\n\n\nblocks = [[(3, 64), (64, 64)], [(64, 128), (128, 128)], [(128, 256), (256, 256), (256, 256)],\n          [(256, 512), (512, 512), (512, 512)], [(512, 512), (512, 512), (512, 512)]]\nconv_base = sum(conv(a, b) for blk in blocks for a, b in blk)\ntop = fc(7 * 7 * 512, 4096) + fc(4096, 4096) + fc(4096, 1000)\nprint(f\"VGG16 卷积基参数: {conv_base:,}\")\nprint(f\"VGG16 原分类头 (3 个全连接层) 参数: {top:,}\")\nprint(f\"合计: {conv_base + top:,}  (约 1.38 亿，大部分在全连接层)\")\n\nnew_head = fc(512, 5)                       # 全局平均池化 -> 5 类新任务\nlast_block = sum(conv(a, b) for a, b in blocks[-1])\nprint(f\"\\n新任务 (5 类，用全局平均池化+一个全连接层):\")\nprint(f\"  特征提取 (冻结全部卷积基): 需训练 {new_head:,} 个参数\")\nprint(f\"  微调最后一个卷积块 + 新头:   需训练 {last_block + new_head:,} 个参数\")\nprint(f\"  全部微调:                   需训练 {conv_base + new_head:,} 个参数\")\n"
+ },
+ "ch11_epipolar.py": {
+  "hash": "70d5304d0296a38e81ae9886fd6df4954ecb6e04",
+  "ok": true,
+  "output": "对极约束残差 |x2^T F x1| 平均 1.84e-02，F 的秩 = 2\n本质矩阵的奇异值 (理论上两个相等、一个为 0): [1.     0.9915 0.    ]\n三角化的三维点平均误差 0.0182 (场景深度 4~8)",
+  "seconds": 0.06,
+  "source": "\"\"\"双视图几何：用归一化八点法估计基础矩阵 F，验证对极约束 x2^T F x1 = 0，再三角化恢复三维点。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nK = np.array([[700, 0, 320], [0, 700, 240], [0, 0, 1.0]])\nX = np.column_stack([rng.uniform(-2, 2, 50), rng.uniform(-1, 1, 50), rng.uniform(4, 8, 50)])\na = np.deg2rad(8)\nR = np.array([[np.cos(a), 0, -np.sin(a)], [0, 1, 0], [np.sin(a), 0, np.cos(a)]])\nt = np.array([-1.0, 0.0, 0.1])                                    # 第二台相机向右平移约 1 个单位\nP1 = K @ np.column_stack([np.eye(3), np.zeros(3)]); P2 = K @ np.column_stack([R, t])\n\n\ndef proj(P, X):\n    x = np.column_stack([X, np.ones(len(X))]) @ P.T\n    return x[:, :2] / x[:, 2:]\n\n\nx1 = proj(P1, X) + rng.normal(0, 0.3, (50, 2)); x2 = proj(P2, X) + rng.normal(0, 0.3, (50, 2))\n\n\ndef norm_T(p):\n    c = p.mean(0); s = np.sqrt(2) / np.mean(np.linalg.norm(p - c, axis=1))\n    return np.array([[s, 0, -s * c[0]], [0, s, -s * c[1]], [0, 0, 1]])\n\n\nT1, T2 = norm_T(x1), norm_T(x2)\nh = lambda p: np.column_stack([p, np.ones(len(p))])\nn1, n2 = h(x1) @ T1.T, h(x2) @ T2.T\nA = np.array([np.kron(b, a_) for a_, b in zip(n1, n2)])           # 每对点一行：x2^T F x1 = 0\nF = np.linalg.svd(A)[2][-1].reshape(3, 3)\nU, S, Vt = np.linalg.svd(F); S[2] = 0; F = U @ np.diag(S) @ Vt    # 强制秩为 2\nF = T2.T @ F @ T1; F /= np.linalg.norm(F)\nres = np.abs(np.sum(h(x2) * (h(x1) @ F.T), 1))\nprint(f\"对极约束残差 |x2^T F x1| 平均 {res.mean():.2e}，F 的秩 = {np.linalg.matrix_rank(F, tol=1e-8)}\")\n\nE = K.T @ F @ K\ns = np.linalg.svd(E, compute_uv=False)\nprint(\"本质矩阵的奇异值 (理论上两个相等、一个为 0):\", np.round(s / s[0], 4))\n\n\ndef triangulate(p1, p2):\n    A = np.array([p1[0] * P1[2] - P1[0], p1[1] * P1[2] - P1[1], p2[0] * P2[2] - P2[0], p2[1] * P2[2] - P2[1]])\n    Xh = np.linalg.svd(A)[2][-1]; return Xh[:3] / Xh[3]\n\n\nXr = np.array([triangulate(p, q) for p, q in zip(x1, x2)])\nprint(f\"三角化的三维点平均误差 {np.linalg.norm(Xr - X, axis=1).mean():.4f} (场景深度 4~8)\")\n"
+ },
+ "ch11_homography.py": {
+  "hash": "37cf85e65f5a7c0c1d6043f6f9ee140ae8c38bb6",
+  "ok": true,
+  "output": "直接用全部点 DLT: 内点的平均重投影误差 95.40 像素\nRANSAC: 找到内点 49 个 (真实内点 49 个), 内点平均误差 0.61 像素\n估计的 H (真实 H 为 [[1.2,0.1,30],[-0.05,0.9,10],[0.0005,0.0002,1]]):\n [[ 1.1984  0.1013 29.8837]\n [-0.051   0.8998 10.4425]\n [ 0.0005  0.0002  1.    ]]",
+  "seconds": 0.09,
+  "source": "\"\"\"单应矩阵：归一化的直接线性变换（DLT）+ RANSAC，抵抗错误匹配。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nH_true = np.array([[1.2, 0.1, 30], [-0.05, 0.9, 10], [0.0005, 0.0002, 1]])\n\n\ndef apply(H, pts):\n    p = np.column_stack([pts, np.ones(len(pts))]) @ H.T\n    return p[:, :2] / p[:, 2:]\n\n\ndef normalize(p):\n    c = p.mean(0); s = np.sqrt(2) / np.mean(np.linalg.norm(p - c, axis=1))\n    T = np.array([[s, 0, -s * c[0]], [0, s, -s * c[1]], [0, 0, 1]])\n    return apply(T, p), T\n\n\ndef dlt(src, dst):\n    (s, Ts), (d, Td) = normalize(src), normalize(dst)            # Hartley 归一化\n    A = []\n    for (x, y), (u, v) in zip(s, d):\n        A.append([-x, -y, -1, 0, 0, 0, u * x, u * y, u])\n        A.append([0, 0, 0, -x, -y, -1, v * x, v * y, v])\n    H = np.linalg.svd(np.array(A))[2][-1].reshape(3, 3)          # 最小奇异值对应的右奇异向量\n    H = np.linalg.inv(Td) @ H @ Ts\n    return H / H[2, 2]\n\n\nsrc = rng.uniform(0, 500, (60, 2))\ndst = apply(H_true, src) + rng.normal(0, 0.5, (60, 2))\nout = rng.random(60) < 0.3; dst[out] = rng.uniform(0, 600, (out.sum(), 2))     # 30% 错误匹配\nerr = lambda H: np.linalg.norm(apply(H, src) - dst, axis=1)\n\nH_all = dlt(src, dst)\nprint(f\"直接用全部点 DLT: 内点的平均重投影误差 {err(H_all)[~out].mean():.2f} 像素\")\n\nbest = None\nfor it in range(500):                                            # RANSAC\n    idx = rng.choice(60, 4, replace=False)\n    H = dlt(src[idx], dst[idx])\n    inl = err(H) < 3.0\n    if best is None or inl.sum() > best.sum(): best = inl\nH_r = dlt(src[best], dst[best])                                  # 用全部内点重新估计\nprint(f\"RANSAC: 找到内点 {best.sum()} 个 (真实内点 {(~out).sum()} 个), 内点平均误差 {err(H_r)[~out].mean():.2f} 像素\")\nnp.set_printoptions(suppress=True)\nprint(\"估计的 H (真实 H 为 [[1.2,0.1,30],[-0.05,0.9,10],[0.0005,0.0002,1]]):\\n\", np.round(H_r, 4))\n"
+ },
+ "ch11_pinhole.py": {
+  "hash": "961c8a0f34192e547807a9ba5f39678d66b46a04",
+  "ok": true,
+  "output": "三维点 (0, 0, 0) -> 像素 [320. 240.]\n三维点 (1, 0, 0) -> 像素 [483.2 240. ]\n三维点 (0, 1, 0) -> 像素 [320. 400.]\n三维点 (0, 0, 10) -> 像素 [413.6 240. ]\nz=    10: 左线 [360. 240.]  右线 [468.4 240. ]\nz=   100: 左线 [446.4 240. ]  右线 [462.1 240. ]\nz= 10000: 左线 [460.9 240. ]  右线 [461.1 240. ]\n理论消失点: [461.1 240. ]",
+  "seconds": 0.05,
+  "source": "\"\"\"针孔相机模型：x = K [R | t] X。把三维点投影到图像上，并观察平行线汇聚到消失点。\"\"\"\nimport numpy as np\n\nf, cx, cy = 800.0, 320.0, 240.0\nK = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]])                  # 内参：焦距与主点\ntheta = np.deg2rad(10)\nR = np.array([[np.cos(theta), 0, np.sin(theta)], [0, 1, 0], [-np.sin(theta), 0, np.cos(theta)]])  # 绕 y 轴转 10°\nt = np.array([0.0, 0.0, 5.0])                                      # 外参：平移\nP = K @ np.column_stack([R, t])                                    # 3x4 相机矩阵\n\n\ndef project(X):\n    x = P @ np.append(X, 1.0)                                      # 齐次坐标\n    return x[:2] / x[2]                                            # 除以第三个分量（透视除法）\n\n\nfor X in [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 10)]:\n    print(f\"三维点 {X} -> 像素 {np.round(project(np.array(X, float)), 1)}\")\n\n# 两条平行于 z 轴的直线，走得越远，投影越接近同一个消失点\nfor z in (10, 100, 10000):\n    a, b = project(np.array([-1.0, 0, z])), project(np.array([1.0, 0, z]))\n    print(f\"z={z:6d}: 左线 {np.round(a, 1)}  右线 {np.round(b, 1)}\")\nd = R @ np.array([0, 0, 1.0])                                      # 方向 (0,0,1) 的消失点 = K R d\nv = K @ d\nprint(\"理论消失点:\", np.round(v[:2] / v[2], 1))\n"
+ },
+ "ch11_ransac.py": {
+  "hash": "cf9b142c652c194f97632a237d1549eb8fa36ba5",
+  "ok": true,
+  "output": "真实直线 y = 2x + 1；最小二乘 y = 0.38x + 9.84；RANSAC y = 1.99x + 1.10\n内点比例 0.5, 最小样本数 2: 需要约 17 次迭代才能以 99% 概率抽到一组全是内点的样本\n内点比例 0.5, 最小样本数 4: 需要约 72 次迭代才能以 99% 概率抽到一组全是内点的样本\n内点比例 0.5, 最小样本数 8: 需要约 1177 次迭代才能以 99% 概率抽到一组全是内点的样本\n内点比例 0.7, 最小样本数 8: 需要约 78 次迭代才能以 99% 概率抽到一组全是内点的样本",
+  "seconds": 0.06,
+  "source": "\"\"\"例题：RANSAC 拟合直线，并计算所需的迭代次数 N = log(1-p) / log(1-w^s)。\"\"\"\nimport math\nimport numpy as np\n\nrng = np.random.default_rng(2)\nx = rng.uniform(0, 10, 100); y = 2 * x + 1 + rng.normal(0, 0.3, 100)\nout = rng.random(100) < 0.4; y[out] = rng.uniform(-20, 40, out.sum())    # 40% 离群点\n\nls = np.polyfit(x, y, 1)\nbest = None\nfor _ in range(200):\n    i, j = rng.choice(100, 2, replace=False)\n    if x[i] == x[j]: continue\n    k = (y[j] - y[i]) / (x[j] - x[i]); b = y[i] - k * x[i]\n    inl = np.abs(y - (k * x + b)) < 1.0\n    if best is None or inl.sum() > best.sum(): best = inl\nrk = np.polyfit(x[best], y[best], 1)\nprint(f\"真实直线 y = 2x + 1；最小二乘 y = {ls[0]:.2f}x + {ls[1]:.2f}；RANSAC y = {rk[0]:.2f}x + {rk[1]:.2f}\")\n\nfor w, s in [(0.5, 2), (0.5, 4), (0.5, 8), (0.7, 8)]:\n    N = math.log(1 - 0.99) / math.log(1 - w ** s)\n    print(f\"内点比例 {w}, 最小样本数 {s}: 需要约 {math.ceil(N)} 次迭代才能以 99% 概率抽到一组全是内点的样本\")\n"
+ },
+ "ch12_attention.py": {
+  "hash": "dd6df287f89c133463d0efc678418b6148c41a37",
+  "ok": true,
+  "output": "注意力权重 (每行和为 1):\n [[0.249 0.297 0.3   0.154]\n [0.268 0.309 0.231 0.192]\n [0.205 0.08  0.145 0.57 ]\n [0.132 0.098 0.218 0.552]]\n因果掩码后的注意力权重 (上三角为 0):\n [[1.    0.    0.    0.   ]\n [0.465 0.535 0.    0.   ]\n [0.477 0.186 0.337 0.   ]\n [0.132 0.098 0.218 0.552]]\nd_k=  4: 点积标准差   1.94 (≈√d_k= 2.00); 缩放后 0.97\nd_k= 64: 点积标准差   7.90 (≈√d_k= 8.00); 缩放后 0.99\nd_k=512: 点积标准差  22.84 (≈√d_k=22.63); 缩放后 1.01",
+  "seconds": 0.07,
+  "source": "\"\"\"缩放点积注意力：Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) V，以及为什么要除以 sqrt(d_k)。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\n\n\ndef softmax(z):\n    z = z - z.max(-1, keepdims=True); e = np.exp(z); return e / e.sum(-1, keepdims=True)\n\n\ndef attention(Q, K, V, mask=None):\n    scores = Q @ K.T / np.sqrt(Q.shape[-1])\n    if mask is not None: scores = np.where(mask, scores, -1e9)\n    w = softmax(scores); return w @ V, w\n\n\n# 4 个词元的自注意力：Q、K、V 都由同一个输入 X 线性变换得到\nn, d_model, d_k = 4, 8, 4\nX = rng.normal(size=(n, d_model))\nWq, Wk, Wv = (rng.normal(0, 1 / np.sqrt(d_model), (d_model, d_k)) for _ in range(3))\nout, w = attention(X @ Wq, X @ Wk, X @ Wv)\nnp.set_printoptions(precision=3, suppress=True)\nprint(\"注意力权重 (每行和为 1):\\n\", w)\ncausal = np.tril(np.ones((n, n), bool))                         # 解码器的因果掩码：只能看见过去\n_, wc = attention(X @ Wq, X @ Wk, X @ Wv, causal)\nprint(\"因果掩码后的注意力权重 (上三角为 0):\\n\", wc)\n\n# 不缩放时，点积的方差随 d_k 增长，softmax 变得接近 one-hot（梯度很小）\nfor dk in (4, 64, 512):\n    q, k = rng.normal(size=(1000, dk)), rng.normal(size=(1000, dk))\n    dots = (q * k).sum(1)\n    print(f\"d_k={dk:3d}: 点积标准差 {dots.std():6.2f} (≈√d_k={np.sqrt(dk):5.2f}); 缩放后 {(dots/np.sqrt(dk)).std():.2f}\")\n"
+ },
+ "ch12_rnn_memory.py": {
+  "hash": "75490f28198ff12d03c08561ff14d4b55f21b017",
+  "ok": true,
+  "output": "普通 RNN: 梯度回传  1 步后的范数 3.89e+00\n普通 RNN: 梯度回传  5 步后的范数 8.23e-01\n普通 RNN: 梯度回传 10 步后的范数 1.74e-01\n普通 RNN: 梯度回传 20 步后的范数 5.42e-03\n普通 RNN: 梯度回传 40 步后的范数 2.72e-05\nLSTM: 第 0 步写入的信息 1.0，60 步后细胞状态仍为 0.552；且 dc_T/dc_0 = 0.99^60 = 0.547",
+  "seconds": 0.06,
+  "source": "\"\"\"普通 RNN 的梯度随时间步指数衰减；LSTM 的细胞状态在遗忘门≈1 时可以把信息原样保留很久。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nd = 32\nW = rng.normal(0, 0.9 / np.sqrt(d), (d, d))                   # 循环权重\nh = np.zeros(d); hs = []\nxs = rng.normal(size=(60, d))\nfor x in xs:                                                    # h_t = tanh(W h_{t-1} + x_t)\n    h = np.tanh(W @ h + 0.5 * x); hs.append(h)\n\ng = np.eye(d)                                                   # dh_T / dh_t = Π W^T diag(1 - h^2)\nfor k, h_t in enumerate(reversed(hs[1:]), 1):\n    g = g @ (np.diag(1 - h_t ** 2) @ W)\n    if k in (1, 5, 10, 20, 40):\n        print(f\"普通 RNN: 梯度回传 {k:2d} 步后的范数 {np.linalg.norm(g):.2e}\")\n\n# LSTM 细胞状态 c_t = f_t * c_{t-1} + i_t * g_t：遗忘门接近 1、输入门接近 0 时，c 几乎不变\nc = 1.0\nfor t in range(60):\n    f_gate, i_gate, g_cand = 0.99, 0.01, rng.uniform(-1, 1)\n    c = f_gate * c + i_gate * g_cand\nprint(f\"LSTM: 第 0 步写入的信息 1.0，60 步后细胞状态仍为 {c:.3f}；且 dc_T/dc_0 = 0.99^60 = {0.99**60:.3f}\")\n"
+ },
+ "ch12_transformer_numbers.py": {
+  "hash": "98926c204b54ecd8bcef4b56130724e4241a6fa8",
+  "ok": true,
+  "output": "位置 0 的前 6 维: [0. 1. 0. 1. 0. 1.]\n位置 10 与其他位置编码的点积 (越近越大): {10: 32.0, 11: 30.92, 12: 28.3, 20: 21.05, 40: 17.07}\n\n编码器层 (d_model=512, 头数=8, d_ff=2048):\n  多头注意力 1,050,624  前馈网络 2,099,712  层归一化 2,048  合计 3,152,384\n  每个头的维度 d_k = 64；6 层编码器约 18.9M 参数\n  注意力分数矩阵大小随序列长度平方增长: n=512 -> 262,144 个元素/头, n=4096 -> 16,777,216",
+  "seconds": 0.05,
+  "source": "\"\"\"正弦位置编码，以及一个 Transformer 编码器层的参数量。\"\"\"\nimport numpy as np\n\n\ndef positional_encoding(n_pos, d):\n    pos = np.arange(n_pos)[:, None]; i = np.arange(d // 2)[None]\n    angle = pos / 10000 ** (2 * i / d)\n    pe = np.zeros((n_pos, d)); pe[:, 0::2] = np.sin(angle); pe[:, 1::2] = np.cos(angle)\n    return pe\n\n\npe = positional_encoding(50, 64)\nprint(\"位置 0 的前 6 维:\", np.round(pe[0, :6], 3))\nsim = pe @ pe[10]\nprint(\"位置 10 与其他位置编码的点积 (越近越大):\", {p: round(float(sim[p]), 2) for p in (10, 11, 12, 20, 40)})\n\nd, h, d_ff = 512, 8, 2048\nattn = 4 * (d * d + d)                                  # Q、K、V、输出投影\nffn = (d * d_ff + d_ff) + (d_ff * d + d)\nnorm = 2 * 2 * d                                        # 两个 LayerNorm 的 γ、β\nprint(f\"\\n编码器层 (d_model={d}, 头数={h}, d_ff={d_ff}):\")\nprint(f\"  多头注意力 {attn:,}  前馈网络 {ffn:,}  层归一化 {norm:,}  合计 {attn + ffn + norm:,}\")\nprint(f\"  每个头的维度 d_k = {d // h}；6 层编码器约 {6 * (attn + ffn + norm) / 1e6:.1f}M 参数\")\nprint(f\"  注意力分数矩阵大小随序列长度平方增长: n=512 -> {512**2:,} 个元素/头, n=4096 -> {4096**2:,}\")\n"
+ },
+ "ch13_autoencoder.py": {
+  "hash": "df2e22388592a016bb1bed66d7c0965a8b7bb66a",
+  "ok": true,
+  "output": "第    1 步 重建均方误差 0.99814\n第  100 步 重建均方误差 0.00205\n第 3000 步 重建均方误差 0.00202\nPCA 保留 2 个主成分的重建误差 0.00199\n自编码器学到的子空间与 PCA 子空间相同: True",
+  "seconds": 0.14,
+  "source": "\"\"\"自编码器：编码器把 10 维数据压到 2 维瓶颈，解码器再重建。线性自编码器学到的子空间与 PCA 相同。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nZ = rng.normal(size=(500, 2))\nA = rng.normal(size=(2, 10))\nX = Z @ A + 0.05 * rng.normal(size=(500, 10)); X -= X.mean(0)       # 10 维数据实际只有 2 个自由度\n\nWe = rng.normal(0, 0.1, (10, 2)); Wd = rng.normal(0, 0.1, (2, 10))\nfor step in range(1, 3001):\n    code = X @ We; Xr = code @ Wd\n    err = Xr - X\n    gWd = code.T @ err / len(X); gWe = X.T @ (err @ Wd.T) / len(X)\n    We -= 0.05 * gWe; Wd -= 0.05 * gWd\n    if step in (1, 100, 3000):\n        print(f\"第 {step:4d} 步 重建均方误差 {np.mean(err ** 2):.5f}\")\n\nU, s, Vt = np.linalg.svd(X, full_matrices=False)\nX_pca = X @ Vt[:2].T @ Vt[:2]\nprint(f\"PCA 保留 2 个主成分的重建误差 {np.mean((X_pca - X) ** 2):.5f}\")\nP_ae = Wd.T @ np.linalg.pinv(Wd.T); P_pca = Vt[:2].T @ Vt[:2]            # 两个子空间的投影矩阵\nprint(\"自编码器学到的子空间与 PCA 子空间相同:\", np.allclose(P_ae, P_pca, atol=1e-2))\n"
+ },
+ "ch13_diffusion.py": {
+  "hash": "901fa11195bdba3c48a5d5e7094b1bac1a9d7585",
+  "ok": true,
+  "output": "t=   0: 信号保留系数 √ᾱ = 0.9999, 噪声系数 √(1-ᾱ) = 0.0100\nt= 100: 信号保留系数 √ᾱ = 0.9461, 噪声系数 √(1-ᾱ) = 0.3238\nt= 500: 信号保留系数 √ᾱ = 0.2789, 噪声系数 √(1-ᾱ) = 0.9603\nt= 999: 信号保留系数 √ᾱ = 0.0064, 噪声系数 √(1-ᾱ) = 1.0000\n\n从噪声生成的样本: 均值 2.003, 标准差 0.502  (数据分布 2.000 / 0.500)",
+  "seconds": 0.17,
+  "source": "\"\"\"扩散模型：前向加噪有闭式解 x_t = √ᾱ_t x_0 + √(1-ᾱ_t) ε；再用（理想的）噪声预测器逐步去噪采样。\n数据分布取 N(2, 0.5²)，此时最优噪声预测器有解析式，可以单独检验采样算法是否正确。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(3)\nT = 1000\nbeta = np.linspace(1e-4, 0.02, T)                 # 线性噪声调度\nalpha = 1 - beta; abar = np.cumprod(alpha)\nfor t in (0, 100, 500, 999):\n    print(f\"t={t:4d}: 信号保留系数 √ᾱ = {np.sqrt(abar[t]):.4f}, 噪声系数 √(1-ᾱ) = {np.sqrt(1 - abar[t]):.4f}\")\n\nmu0, s0 = 2.0, 0.5\n\n\ndef eps_pred(x, t):                               # E[ε | x_t]，对高斯数据精确成立；真实模型用神经网络学它\n    var = abar[t] * s0 ** 2 + 1 - abar[t]\n    return np.sqrt(1 - abar[t]) * (x - np.sqrt(abar[t]) * mu0) / var\n\n\nx = rng.normal(size=20000)                        # 从纯噪声出发\nfor t in range(T - 1, -1, -1):                    # DDPM 逆向采样\n    mean = (x - beta[t] / np.sqrt(1 - abar[t]) * eps_pred(x, t)) / np.sqrt(alpha[t])\n    x = mean + (np.sqrt(beta[t]) * rng.normal(size=x.size) if t > 0 else 0)\nprint(f\"\\n从噪声生成的样本: 均值 {x.mean():.3f}, 标准差 {x.std():.3f}  (数据分布 2.000 / 0.500)\")\n"
+ },
+ "ch13_gan_1d.py": {
+  "hash": "3692e22f0e75038666331c012f5086497c7d4c85",
+  "ok": true,
+  "output": "第    1 步: 生成分布 均值  0.01  标准差 1.00   (目标 4.00 / 1.25)\n第  500 步: 生成分布 均值  4.24  标准差 0.95   (目标 4.00 / 1.25)\n第 1000 步: 生成分布 均值  4.07  标准差 0.60   (目标 4.00 / 1.25)\n第 2000 步: 生成分布 均值  4.16  标准差 0.54   (目标 4.00 / 1.25)\n第 3000 步: 生成分布 均值  4.08  标准差 0.97   (目标 4.00 / 1.25)\n第 4000 步: 生成分布 均值  3.81  标准差 1.86   (目标 4.00 / 1.25)\n第 5000 步: 生成分布 均值  3.91  标准差 1.38   (目标 4.00 / 1.25)\n第 6000 步: 生成分布 均值  4.08  标准差 0.84   (目标 4.00 / 1.25)\n均值很快被学到，标准差却在目标附近来回震荡：生成器与判别器在“追逐”，这正是 GAN 训练不稳定的缩影",
+  "seconds": 0.4,
+  "source": "\"\"\"一维 GAN：生成器 G(z) = a·z + b 学习模仿 N(4, 1.25²)，判别器是关于 x 的二次逻辑回归。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(2)\nsig = lambda t: 1 / (1 + np.exp(-np.clip(t, -30, 30)))\na, b = 1.0, 0.0                                   # 生成器参数（初始输出 N(0,1)）\nw = np.zeros(3)                                   # 判别器 D(x) = σ(w0 + w1 x + w2 x²)\nfeat = lambda x: np.stack([np.ones_like(x), x, x ** 2], 1)\nlr_d, lr_g, n = 0.05, 0.02, 256\nfor step in range(1, 6001):\n    real = rng.normal(4, 1.25, n); z = rng.normal(size=n); fake = a * z + b\n    for _ in range(2):                            # 判别器：最大化 log D(real) + log(1 - D(fake))\n        Fr, Ff = feat(real / 4), feat(fake / 4)\n        w += lr_d * (Fr.T @ (1 - sig(Fr @ w)) - Ff.T @ sig(Ff @ w)) / n\n    Ff = feat(fake / 4); d = sig(Ff @ w)\n    dlogD_dx = (1 - d) * (w[1] + 2 * w[2] * fake / 4) / 4    # 生成器：最大化 log D(fake)（非饱和损失）\n    a += lr_g * np.mean(dlogD_dx * z); b += lr_g * np.mean(dlogD_dx)\n    if step in (1, 500, 1000, 2000, 3000, 4000, 5000, 6000):\n        s = a * rng.normal(size=20000) + b\n        print(f\"第 {step:4d} 步: 生成分布 均值 {s.mean():5.2f}  标准差 {s.std():4.2f}   (目标 4.00 / 1.25)\")\nprint(\"均值很快被学到，标准差却在目标附近来回震荡：生成器与判别器在“追逐”，这正是 GAN 训练不稳定的缩影\")\n"
+ },
+ "ch13_vae_kl.py": {
+  "hash": "e6d6124ef3aa3a33d4c9e77610da8172ef5fe99c",
+  "ok": true,
+  "output": "μ=0, σ=1: KL 闭式解 0.0000  蒙特卡洛估计 0.0000\nμ=1, σ=1: KL 闭式解 0.5000  蒙特卡洛估计 0.4969\nμ=0, σ=0.5: KL 闭式解 0.3181  蒙特卡洛估计 0.3181\nμ=2, σ=0.3: KL 闭式解 2.7490  蒙特卡洛估计 2.7507\nKL 项把每个样本的后验 q(z|x) 拉向标准正态分布，让隐空间连续、可以随意采样\nE[z²] 对 μ 的梯度: 重参数化估计 3.0052, 理论值 3.0",
+  "seconds": 0.06,
+  "source": "\"\"\"VAE 的两个关键：重参数化技巧 z = μ + σ·ε，以及 KL(N(μ,σ²) || N(0,1)) 的闭式解。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\n\n\ndef kl_closed(mu, sigma):\n    return 0.5 * (mu ** 2 + sigma ** 2 - 1 - 2 * np.log(sigma))\n\n\nfor mu, sigma in [(0, 1), (1, 1), (0, 0.5), (2, 0.3)]:\n    eps = rng.normal(size=200000)\n    z = mu + sigma * eps                                     # 重参数化：随机性只来自 ε，对 μ、σ 可导\n    log_q = -0.5 * ((z - mu) / sigma) ** 2 - np.log(sigma)\n    log_p = -0.5 * z ** 2\n    kl_mc = np.mean(log_q - log_p)                           # 蒙特卡洛估计（常数项相消）\n    print(f\"μ={mu}, σ={sigma}: KL 闭式解 {kl_closed(mu, sigma):.4f}  蒙特卡洛估计 {kl_mc:.4f}\")\nprint(\"KL 项把每个样本的后验 q(z|x) 拉向标准正态分布，让隐空间连续、可以随意采样\")\n\n# 重参数化梯度：d E[z^2] / dμ = 2μ，用 ε 采样估计\nmu, sigma = 1.5, 0.8\neps = rng.normal(size=100000)\nprint(f\"E[z²] 对 μ 的梯度: 重参数化估计 {np.mean(2 * (mu + sigma * eps)):.4f}, 理论值 {2 * mu}\")\n"
+ },
+ "ch14_bandit.py": {
+  "hash": "e2b5264952a8e1b7c3e83183e04326c82939979f",
+  "ok": true,
+  "output": "ε=0.0  : 平均奖励 0.997, 选到最优臂的比例 31.8%\nε=0.01 : 平均奖励 1.194, 选到最优臂的比例 49.0%\nε=0.1  : 平均奖励 1.324, 选到最优臂的比例 73.5%\n纯贪心容易过早锁定一个次优选项；适度探索能找到更好的选择",
+  "seconds": 1.36,
+  "source": "\"\"\"探索与利用：10 臂老虎机上比较纯贪心与 ε-贪心策略。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\nk, steps, runs = 10, 1000, 300\nresults = {}\nfor eps in (0.0, 0.01, 0.1):\n    total, optimal = 0.0, 0.0\n    for _ in range(runs):\n        q_true = rng.normal(0, 1, k); best = q_true.argmax()\n        Q = np.zeros(k); N = np.zeros(k)\n        for t in range(steps):\n            a = rng.integers(k) if rng.random() < eps else int(np.argmax(Q))   # ε 概率随机探索\n            r = rng.normal(q_true[a], 1)\n            N[a] += 1; Q[a] += (r - Q[a]) / N[a]                              # 增量式平均\n            total += r; optimal += (a == best)\n    results[eps] = (total / runs / steps, optimal / runs / steps)\nfor eps, (avg_r, opt) in results.items():\n    print(f\"ε={eps:<5}: 平均奖励 {avg_r:.3f}, 选到最优臂的比例 {opt:.1%}\")\nprint(\"纯贪心容易过早锁定一个次优选项；适度探索能找到更好的选择\")\n"
+ },
+ "ch14_ex_return.py": {
+  "hash": "9a5a47c5bc059f39433c887f6a26b52384d3382b",
+  "ok": true,
+  "output": "折扣回报 G = 0.9^0*1 + 0.9^1*0 + 0.9^2*0 + 0.9^3*5 = 4.6450\nTD 目标 = 1.0 + 0.9*3.0 = 3.7; 新 Q = 2.0 + 0.1*(3.7 - 2.0) = 2.17",
+  "seconds": 0.02,
+  "source": "\"\"\"例题：折扣回报与一次 Q 学习更新。\"\"\"\nrewards, gamma = [1, 0, 0, 5], 0.9\nG = sum(gamma ** k * r for k, r in enumerate(rewards))\nprint(\"折扣回报 G =\", \" + \".join(f\"{gamma}^{k}*{r}\" for k, r in enumerate(rewards)), f\"= {G:.4f}\")\nQ, alpha, r, max_next = 2.0, 0.1, 1.0, 3.0\ntarget = r + gamma * max_next\nprint(f\"TD 目标 = {r} + {gamma}*{max_next} = {target}; 新 Q = {Q} + {alpha}*({target} - {Q}) = {Q + alpha * (target - Q):.2f}\")\n"
+ },
+ "ch14_preferences.py": {
+  "hash": "dfc5a18fdd5b998ebbc958ca9eae6c2f3ffcdfd3",
+  "ok": true,
+  "output": "真实奖励权重: [ 2.  -1.   0.5  0.   1. ]\n学到的奖励权重: [ 2.02 -1.02  0.51 -0.    0.98]\n奖励模型在训练偏好上的一致率 0.855 (标注本身有噪声，上限低于 1)\n\nDPO 隐式奖励差 = 0.40,  损失 = -log σ(差) = 0.5130\n若策略与参考模型完全相同，损失 = log 2 = 0.6931",
+  "seconds": 0.07,
+  "source": "\"\"\"RLHF 的两块基石：用 Bradley–Terry 模型从成对偏好中学习奖励模型；以及 DPO 损失的计算。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(3)\nd = 5\nw_true = np.array([2.0, -1.0, 0.5, 0.0, 1.0])     # 人类“真实”偏好的隐藏权重（回答的特征 -> 奖励）\nA = rng.normal(size=(2000, d)); B = rng.normal(size=(2000, d))\np_prefer_A = 1 / (1 + np.exp(-(A - B) @ w_true))   # Bradley–Terry: P(A ≻ B) = σ(r(A) − r(B))\ny = (rng.random(2000) < p_prefer_A).astype(float)\nchosen = np.where(y[:, None] == 1, A, B); rejected = np.where(y[:, None] == 1, B, A)\n\nw = np.zeros(d)\nfor _ in range(500):                               # 最小化 −log σ(r(chosen) − r(rejected))\n    m = (chosen - rejected) @ w\n    grad = -((1 - 1 / (1 + np.exp(-m)))[:, None] * (chosen - rejected)).mean(0)\n    w -= 0.5 * grad\nprint(\"真实奖励权重:\", w_true)\nprint(\"学到的奖励权重:\", np.round(w, 2))\nacc = (((chosen - rejected) @ w) > 0).mean()\nprint(f\"奖励模型在训练偏好上的一致率 {acc:.3f} (标注本身有噪声，上限低于 1)\")\n\n# DPO：直接用策略与参考模型的对数概率比构造损失，无需单独的奖励模型\nbeta = 0.1\nlogp_pol_w, logp_ref_w = -12.0, -14.0              # 偏好回答: 策略比参考模型更喜欢它 (+2)\nlogp_pol_l, logp_ref_l = -15.0, -13.0              # 被拒回答: 策略比参考模型更不喜欢它 (-2)\nmargin = beta * ((logp_pol_w - logp_ref_w) - (logp_pol_l - logp_ref_l))\nprint(f\"\\nDPO 隐式奖励差 = {margin:.2f},  损失 = -log σ(差) = {-np.log(1 / (1 + np.exp(-margin))):.4f}\")\nprint(f\"若策略与参考模型完全相同，损失 = log 2 = {np.log(2):.4f}\")\n"
+ },
+ "ch14_qlearning.py": {
+  "hash": "7e519478fb4c69eed0d44a31378a11a592a1008d",
+  "ok": true,
+  "output": "学到的策略 (G=终点, H=陷阱):\n↓ → ↓ ←\n↓ H ↓ ←\n→ → ↓ H\nH → → G\n贪心路径: [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (3, 2), (3, 3)]\n起点状态价值 V(0,0) = max_a Q = 0.729",
+  "seconds": 0.09,
+  "source": "\"\"\"Q 学习：在 4x4 网格世界中学习走到终点。Q(s,a) ← Q(s,a) + α [r + γ max_a' Q(s',a') − Q(s,a)]\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nN = 4; goal = (3, 3); holes = {(1, 1), (2, 3), (3, 0)}\nmoves = [(-1, 0), (1, 0), (0, -1), (0, 1)]; names = \"↑↓←→\"\n\n\ndef step(s, a):\n    r, c = s[0] + moves[a][0], s[1] + moves[a][1]\n    if not (0 <= r < N and 0 <= c < N): r, c = s\n    if (r, c) == goal: return (r, c), 1.0, True\n    if (r, c) in holes: return (r, c), -1.0, True\n    return (r, c), -0.01, False                     # 每走一步小惩罚，鼓励走最短路\n\n\nQ = np.zeros((N, N, 4)); alpha, gamma = 0.5, 0.95\nfor ep in range(2000):\n    s, done = (0, 0), False\n    eps = max(0.05, 1 - ep / 1000)                 # 探索率逐渐衰减\n    while not done:\n        a = rng.integers(4) if rng.random() < eps else int(np.argmax(Q[s]))\n        s2, r, done = step(s, a)\n        target = r + (0 if done else gamma * Q[s2].max())\n        Q[s][a] += alpha * (target - Q[s][a])\n        s = s2\n\nprint(\"学到的策略 (G=终点, H=陷阱):\")\nfor r in range(N):\n    print(\" \".join(\"G\" if (r, c) == goal else \"H\" if (r, c) in holes else names[int(np.argmax(Q[r, c]))] for c in range(N)))\ns, path = (0, 0), [(0, 0)]\nfor _ in range(10):\n    s, _, done = step(s, int(np.argmax(Q[s]))); path.append(s)\n    if done: break\nprint(\"贪心路径:\", path)\nprint(f\"起点状态价值 V(0,0) = max_a Q = {Q[0, 0].max():.3f}\")\n"
+ },
+ "ch14_reinforce.py": {
+  "hash": "c92d23cc906bd4b316e5e5f7cd1cbafc5a5fd49f",
+  "ok": true,
+  "output": "无基线: 最终策略 [0.007 0.011 0.983], 梯度估计的方差 0.0766\n有基线: 最终策略 [0.006 0.014 0.98 ], 梯度估计的方差 0.0450\n策略逐渐集中到奖励最高的动作 2；减去基线后梯度方差更小，学习更稳定",
+  "seconds": 0.09,
+  "source": "\"\"\"策略梯度 REINFORCE：∇J = E[∇log π(a) · (R − b)]，基线 b 降低方差但不改变期望。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(2)\ntrue_reward = np.array([0.2, 0.5, 0.8])            # 三个动作的平均奖励\ntheta = np.zeros(3)                                # softmax 策略的参数\n\n\ndef policy(th):\n    e = np.exp(th - th.max()); return e / e.sum()\n\n\nfor use_baseline in (False, True):\n    th = theta.copy(); b = 0.0; grads = []\n    for it in range(1, 2001):\n        p = policy(th); a = rng.choice(3, p=p)\n        R = rng.normal(true_reward[a], 0.5)\n        grad_logp = -p; grad_logp[a] += 1          # ∇_θ log softmax(θ)_a = onehot(a) − p\n        adv = R - (b if use_baseline else 0)\n        g = grad_logp * adv; grads.append(g)\n        th += 0.05 * g\n        b += 0.05 * (R - b)                        # 基线 = 奖励的滑动平均\n    tag = \"有基线\" if use_baseline else \"无基线\"\n    print(f\"{tag}: 最终策略 {np.round(policy(th), 3)}, 梯度估计的方差 {np.var(grads[:500], 0).mean():.4f}\")\nprint(\"策略逐渐集中到奖励最高的动作 2；减去基线后梯度方差更小，学习更稳定\")\n"
+ },
+ "ch15_histogram_filter.py": {
+  "hash": "cc5f04604dfce73813a89c59516e64342a4699a4",
+  "ok": true,
+  "output": "观测到门     -> 最可能的位置 [8, 3, 14] 概率 [0.195, 0.195, 0.195]  (真实位置 3)\n向右走 5 格  -> 最可能的位置 [19, 13, 8] 概率 [0.161, 0.161, 0.161]  (真实位置 8)\n观测到门     -> 最可能的位置 [8, 14, 3] 概率 [0.498, 0.128, 0.075]  (真实位置 8)\n向右走 5 格  -> 最可能的位置 [13, 19, 18] 概率 [0.401, 0.11, 0.064]  (真实位置 13)\n观测到墙     -> 最可能的位置 [13, 19, 18] 概率 [0.453, 0.124, 0.072]  (真实位置 13)",
+  "seconds": 0.05,
+  "source": "\"\"\"直方图（离散贝叶斯）滤波：机器人在有 3 扇门的一维走廊中全局定位（《概率机器人》开篇的经典例子）。\"\"\"\nimport numpy as np\n\nn = 20\ndoors = np.zeros(n, bool); doors[[3, 8, 14]] = True\np_hit, p_false = 0.8, 0.1                       # 门前看到门的概率 / 非门处误报门的概率\n\n\ndef sense(bel, see_door):\n    like = np.where(doors, p_hit, p_false) if see_door else np.where(doors, 1 - p_hit, 1 - p_false)\n    bel = like * bel                            # 修正步：乘以似然\n    return bel / bel.sum()                      # 归一化\n\n\ndef move(bel, k):                               # 预测步：向右移动 k 格，带运动噪声\n    return 0.8 * np.roll(bel, k) + 0.1 * np.roll(bel, k - 1) + 0.1 * np.roll(bel, k + 1)\n\n\nbel = np.ones(n) / n                            # 一开始不知道自己在哪：均匀分布\ntrue_pos = 3\nfor step, see in enumerate([True, None, True, None, False]):\n    if see is None:\n        bel = move(bel, 5); true_pos = (true_pos + 5) % n; what = \"向右走 5 格\"\n    else:\n        bel = sense(bel, doors[true_pos]); what = f\"观测到{'门' if doors[true_pos] else '墙'}\"\n    top = np.argsort(bel)[::-1][:3]\n    print(f\"{what:8s} -> 最可能的位置 {top.tolist()} 概率 {np.round(bel[top], 3).tolist()}  (真实位置 {true_pos})\")\n"
+ },
+ "ch15_kalman.py": {
+  "hash": "c2705f669a6c0cfe2942c81d78ecc270f790934f",
+  "ok": true,
+  "output": "t= 0: 卡尔曼增益 K=[0.833 0.416]  速度估计 0.955 (真实 0.987)\nt= 4: 卡尔曼增益 K=[0.547 0.164]  速度估计 0.292 (真实 0.944)\nt=49: 卡尔曼增益 K=[0.274 0.043]  速度估计 1.207 (真实 1.447)\n位置误差 RMSE: 直接用测量 1.924  卡尔曼滤波 1.029",
+  "seconds": 0.06,
+  "source": "\"\"\"卡尔曼滤波：用带噪声的位置测量跟踪一个匀速运动的目标，同时估计位置与速度。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\ndt, T = 1.0, 50\nF = np.array([[1, dt], [0, 1]])                 # 状态转移：位置 += 速度*dt\nH = np.array([[1.0, 0.0]])                      # 只能测量位置\nQ = 0.01 * np.eye(2)                            # 过程噪声\nR = np.array([[4.0]])                           # 测量噪声方差（标准差 2）\n\nx_true = np.array([0.0, 1.0]); x = np.array([0.0, 0.0]); P = np.eye(2) * 10\nerr_meas, err_kf = [], []\nfor t in range(T):\n    x_true = F @ x_true + rng.multivariate_normal([0, 0], Q)\n    z = H @ x_true + rng.normal(0, 2.0, 1)\n    x = F @ x; P = F @ P @ F.T + Q                       # 预测\n    S = H @ P @ H.T + R; K = P @ H.T @ np.linalg.inv(S)  # 卡尔曼增益\n    x = x + K @ (z - H @ x); P = (np.eye(2) - K @ H) @ P # 更新\n    err_meas.append(z[0] - x_true[0]); err_kf.append(x[0] - x_true[0])\n    if t in (0, 4, 49):\n        print(f\"t={t:2d}: 卡尔曼增益 K={np.round(K.ravel(), 3)}  速度估计 {x[1]:.3f} (真实 {x_true[1]:.3f})\")\nrm = lambda e: np.sqrt(np.mean(np.square(e[10:])))\nprint(f\"位置误差 RMSE: 直接用测量 {rm(err_meas):.3f}  卡尔曼滤波 {rm(err_kf):.3f}\")\n"
+ },
+ "ch15_occupancy.py": {
+  "hash": "0dd707430deaa7c0aa8a555a05496e80a8636075",
+  "ok": true,
+  "output": "第 1 次扫描后各格子的占据概率: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.7, 0.5, 0.5, 0.5]\n第 2 次扫描后各格子的占据概率: [0.16, 0.16, 0.16, 0.16, 0.16, 0.16, 0.84, 0.5, 0.5, 0.5]\n第 3 次扫描后各格子的占据概率: [0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.93, 0.5, 0.5, 0.5]\n障碍物（第 7 格）后面的格子被挡住、从未被观测，保持 0.5（未知）",
+  "seconds": 0.05,
+  "source": "\"\"\"占据栅格建图：用对数几率累加多次激光测量，l = l + log(p/(1-p)) - l0。\"\"\"\nimport numpy as np\n\ncells = 10\nl = np.zeros(cells)                              # 对数几率 0 <=> 占据概率 0.5（未知）\nl_occ, l_free = np.log(0.7 / 0.3), np.log(0.3 / 0.7)\nfor scan in range(1, 4):                         # 激光三次都测到第 6 格有障碍\n    hit = 6\n    l[:hit] += l_free                            # 光束穿过的格子：更可能空闲\n    l[hit] += l_occ                              # 光束末端：更可能被占据\n    p = 1 - 1 / (1 + np.exp(l))\n    print(f\"第 {scan} 次扫描后各格子的占据概率: {np.round(p, 2).tolist()}\")\nprint(\"障碍物（第 7 格）后面的格子被挡住、从未被观测，保持 0.5（未知）\")\n"
+ },
+ "ch15_particle_filter.py": {
+  "hash": "6d3a4ae32d36cd3ddd7b2181c95c3c7a56c674b5",
+  "ok": true,
+  "output": "观测到门: 有效粒子数    803, 粒子最密集的区间起点 [7.0, 3.0, 13.0], 真实位置 3.2\n观测到门: 有效粒子数    887, 粒子最密集的区间起点 [7.0, 8.0, 13.0], 真实位置 8.2\n观测到墙: 有效粒子数   1834, 粒子最密集的区间起点 [12.0, 13.0, 18.0], 真实位置 13.2\n最终估计位置 12.99, 真实位置 13.2",
+  "seconds": 0.06,
+  "source": "\"\"\"粒子滤波：同样的门走廊，但状态连续。粒子能表示多峰的信念，并在新观测后坍缩到真实位置。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(1)\nL = 20.0\ndoors = np.array([3.0, 8.0, 14.0])\n\n\ndef door_likelihood(x, see_door):\n    near = np.min(np.abs(((x[:, None] - doors[None]) + L / 2) % L - L / 2), 1) < 0.5\n    p = np.where(near, 0.8, 0.1)\n    return p if see_door else 1 - p\n\n\nM = 2000\nparticles = rng.uniform(0, L, M)                # 均匀撒点：完全不知道自己在哪\ntrue_x = 3.2\nfor step, action in enumerate([\"sense\", \"move\", \"sense\", \"move\", \"sense\"]):\n    if action == \"move\":\n        true_x = (true_x + 5.0) % L\n        particles = (particles + 5.0 + rng.normal(0, 0.2, M)) % L      # 按运动模型移动每个粒子\n        continue\n    see = np.min(np.abs(true_x - doors)) < 0.5\n    w = door_likelihood(particles, see); w /= w.sum()                   # 按观测似然加权\n    ess = 1 / np.sum(w ** 2)\n    particles = particles[rng.choice(M, M, p=w)]                        # 重采样\n    hist, edges = np.histogram(particles, bins=20, range=(0, L))\n    peaks = edges[np.argsort(hist)[::-1][:3]].tolist()\n    print(f\"观测到{'门' if see else '墙'}: 有效粒子数 {ess:6.0f}, 粒子最密集的区间起点 {peaks}, 真实位置 {true_x:.1f}\")\nprint(f\"最终估计位置 {np.median(particles):.2f}, 真实位置 {true_x:.1f}\")\n"
+ },
+ "ch16_concurrency.py": {
+  "hash": "269e696e5ce48353597a8e180fa9b5ccec0904b2",
+  "ok": true,
+  "output": "8 个 I/O 任务  串行 1.65s  8 线程 0.21s\n4 个 CPU 任务  串行 0.26s  4 线程 0.23s  4 进程 0.10s\n结论: 线程适合等待型任务；CPU 密集的纯 Python 代码要用多进程（如 PyTorch DataLoader 的 num_workers）",
+  "seconds": 2.53,
+  "source": "\"\"\"操作系统视角：I/O 密集任务适合多线程，CPU 密集任务受 GIL 限制，需要多进程。\"\"\"\nimport time\nfrom concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor\n\n\ndef io_task(_):\n    time.sleep(0.2)                            # 模拟读磁盘/网络：等待期间释放 GIL\n    return 1\n\n\ndef cpu_task(n):\n    return sum(i * i for i in range(n))        # 纯 Python 计算：持有 GIL\n\n\ndef timed(fn):\n    t = time.perf_counter(); fn(); return time.perf_counter() - t\n\n\nif __name__ == \"__main__\":\n    print(f\"8 个 I/O 任务  串行 {timed(lambda: [io_task(i) for i in range(8)]):.2f}s\", end=\"  \")\n    with ThreadPoolExecutor(8) as ex:\n        print(f\"8 线程 {timed(lambda: list(ex.map(io_task, range(8)))):.2f}s\")\n    N = [2_000_000] * 4\n    serial = timed(lambda: [cpu_task(n) for n in N])\n    with ThreadPoolExecutor(4) as ex:\n        threads = timed(lambda: list(ex.map(cpu_task, N)))\n    with ProcessPoolExecutor(4) as ex:\n        ex.submit(cpu_task, 10).result()       # 预热，排除进程启动时间\n        procs = timed(lambda: list(ex.map(cpu_task, N)))\n    print(f\"4 个 CPU 任务  串行 {serial:.2f}s  4 线程 {threads:.2f}s  4 进程 {procs:.2f}s\")\n    print(\"结论: 线程适合等待型任务；CPU 密集的纯 Python 代码要用多进程（如 PyTorch DataLoader 的 num_workers）\")\n"
+ },
+ "ch16_drift.py": {
+  "hash": "39ec34382431953340148976782e386b5ff0f7b8",
+  "ok": true,
+  "output": "同分布   : PSI = 0.003 -> 稳定\n换了新相机 : PSI = 0.532 -> 显著漂移，需要排查/重新训练",
+  "seconds": 0.06,
+  "source": "\"\"\"上线之后：用群体稳定性指数 PSI 检测数据漂移（训练分布 vs 线上分布）。\"\"\"\nimport numpy as np\n\nrng = np.random.default_rng(0)\ntrain = rng.normal(0.45, 0.12, 20000)          # 例如：训练集图像的平均亮度\nprod_same = rng.normal(0.45, 0.12, 5000)\nprod_shift = rng.normal(0.55, 0.15, 5000)      # 换了新相机：亮度整体偏高\n\n\ndef psi(expected, actual, bins=10):\n    edges = np.quantile(expected, np.linspace(0, 1, bins + 1)); edges[0], edges[-1] = -np.inf, np.inf\n    e = np.histogram(expected, edges)[0] / len(expected) + 1e-6\n    a = np.histogram(actual, edges)[0] / len(actual) + 1e-6\n    return np.sum((a - e) * np.log(a / e))\n\n\nfor name, d in [(\"同分布\", prod_same), (\"换了新相机\", prod_shift)]:\n    v = psi(train, d)\n    level = \"稳定\" if v < 0.1 else (\"轻微漂移\" if v < 0.25 else \"显著漂移，需要排查/重新训练\")\n    print(f\"{name:6s}: PSI = {v:.3f} -> {level}\")\n"
+ },
+ "ch16_ex_scope.py": {
+  "hash": "3e21b55d40b489c7899c12b4ac603b983fd5597e",
+  "ok": true,
+  "output": "f() = 20  全局 x = 10\n生成器在迭代时才计算: [1, 4, 9, 16]\n再次迭代同一个生成器: [] <- 生成器只能遍历一次",
+  "seconds": 0.01,
+  "source": "\"\"\"例题：预测输出。\"\"\"\nx = 10\ndef f():\n    x = 20\n    def g():\n        return x\n    return g()\nprint(\"f() =\", f(), \" 全局 x =\", x)\n\nnums = [1, 2, 3]\nsquares = (n * n for n in nums)                # 生成器：惰性求值\nnums.append(4)\nprint(\"生成器在迭代时才计算:\", list(squares))\nprint(\"再次迭代同一个生成器:\", list(squares), \"<- 生成器只能遍历一次\")\n"
+ },
+ "ch16_micrograd.py": {
+  "hash": "6c2dd04cd57214609fbc22b780588d95ac9900d7",
+  "ok": true,
+  "output": "y  = Value(data=0.7071, grad=1.0000)\nw1 = Value(data=-3.0000, grad=1.0000)  (dy/dw1 = x1 * (1 - y^2))\nx1 = Value(data=2.0000, grad=-1.4999)\n数值梯度 dy/dw1 = 1.0000",
+  "seconds": 0.02,
+  "source": "\"\"\"读懂 PyTorch 的自动微分：用 Python 类与运算符重载实现一个 40 行的标量自动微分引擎。\"\"\"\nimport math\n\n\nclass Value:\n    def __init__(self, data, children=(), op=\"\"):\n        self.data, self.grad = data, 0.0\n        self._prev, self._op, self._backward = children, op, lambda: None\n\n    def __add__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data + other.data, (self, other), \"+\")\n        def _backward():\n            self.grad += out.grad; other.grad += out.grad\n        out._backward = _backward; return out\n\n    def __mul__(self, other):\n        other = other if isinstance(other, Value) else Value(other)\n        out = Value(self.data * other.data, (self, other), \"*\")\n        def _backward():\n            self.grad += other.data * out.grad; other.grad += self.data * out.grad\n        out._backward = _backward; return out\n\n    __radd__ = __add__\n    __rmul__ = __mul__\n\n    def tanh(self):\n        t = math.tanh(self.data); out = Value(t, (self,), \"tanh\")\n        def _backward(): self.grad += (1 - t * t) * out.grad\n        out._backward = _backward; return out\n\n    def backward(self):                        # 拓扑排序后按逆序应用链式法则\n        order, seen = [], set()\n        def build(v):\n            if v not in seen:\n                seen.add(v); [build(c) for c in v._prev]; order.append(v)\n        build(self); self.grad = 1.0\n        for v in reversed(order): v._backward()\n\n    def __repr__(self): return f\"Value(data={self.data:.4f}, grad={self.grad:.4f})\"\n\n\n# 一个神经元: y = tanh(w1*x1 + w2*x2 + b)\nx1, x2, w1, w2, b = Value(2.0), Value(0.0), Value(-3.0), Value(1.0), Value(6.8814)\ny = (x1 * w1 + x2 * w2 + b).tanh()\ny.backward()\nprint(\"y  =\", y)\nprint(\"w1 =\", w1, \" (dy/dw1 = x1 * (1 - y^2))\")\nprint(\"x1 =\", x1)\neps = 1e-6                                     # 数值梯度验证\nf = lambda w: math.tanh(2.0 * w + 0.0 * 1.0 + 6.8814)\nprint(f\"数值梯度 dy/dw1 = {(f(-3 + eps) - f(-3 - eps)) / (2 * eps):.4f}\")\n"
+ },
+ "ch16_python_objects.py": {
+  "hash": "223c25cb39461d5bffb0165bf8b7137462fdc76f",
+  "ok": true,
+  "output": "共享引用: [1, 2, 3, 4]  a is b: True\n复制之后: [1, 2, 3, 4] [1, 2, 3, 4, 5]\n可变默认参数: [1, 2] [1, 2]\n正确写法: [1] [2]\n闭包计数器: 1 2 3  全局 count 仍为 0\n不可变对象: abcd abc",
+  "seconds": 0.01,
+  "source": "\"\"\"Python 对象模型的三个常见陷阱：共享引用、可变默认参数、作用域（LEGB）。\"\"\"\n\n# 1. 变量只是名字，赋值让名字指向对象；两个名字可以指向同一个列表\na = [1, 2, 3]\nb = a                       # 不是复制！\nb.append(4)\nprint(\"共享引用:\", a, \" a is b:\", a is b)\nc = a.copy(); c.append(5)\nprint(\"复制之后:\", a, c)\n\n\n# 2. 默认参数只在函数定义时求值一次\ndef add_item(x, bucket=[]):\n    bucket.append(x); return bucket\n\n\nprint(\"可变默认参数:\", add_item(1), add_item(2))      # 第二次调用看到了第一次的结果\n\n\ndef add_item_ok(x, bucket=None):\n    bucket = [] if bucket is None else bucket\n    bucket.append(x); return bucket\n\n\nprint(\"正确写法:\", add_item_ok(1), add_item_ok(2))\n\n# 3. LEGB：Local -> Enclosing -> Global -> Built-in；修改外层变量需要 nonlocal\ncount = 0\n\n\ndef make_counter():\n    count = 0\n    def inc():\n        nonlocal count      # 没有这一行会抛出 UnboundLocalError\n        count += 1; return count\n    return inc\n\n\ninc = make_counter()\nprint(\"闭包计数器:\", inc(), inc(), inc(), \" 全局 count 仍为\", count)\ns = \"abc\"; t = s; s += \"d\"                     # 字符串不可变：+= 创建了新对象，t 不受影响\nprint(\"不可变对象:\", s, t)\n"
+ }
+}

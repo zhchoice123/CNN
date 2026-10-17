@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "study-site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "study_site"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "cnn-lab",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "lab/server.py"
+      ],
+      "port": 8766
+    }
+  ]
+}
